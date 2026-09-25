@@ -1,6 +1,6 @@
 """Tests for storage and locking mechanisms."""
 
-from claude_session_restore.storage import (
+from agent_session_restore.storage import (
     ENV_REGISTRY_PATH,
     FileLock,
     get_default_registry_path,
@@ -52,3 +52,4 @@ def test_env_path_override(temp_dir, monkeypatch):
 
     path = get_default_registry_path()
     assert path == custom_path.resolve()
+

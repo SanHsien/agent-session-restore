@@ -1,8 +1,8 @@
 """Tests for session launcher."""
 
 
-from claude_session_restore.launcher import SessionLauncher
-from claude_session_restore.models import SessionEntry
+from agent_session_restore.launcher import SessionLauncher
+from agent_session_restore.models import SessionEntry
 
 
 def test_build_resume_command_wt(sample_entry):
@@ -89,3 +89,4 @@ def test_generate_powershell_script(sample_entry):
     assert "Session Restore Script" in script
     assert sample_entry.session_id in script
     assert sample_entry.name in script
+

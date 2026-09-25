@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from claude_session_restore.models import SessionEntry
-from claude_session_restore.registry import SessionRegistry
-from claude_session_restore.storage import SessionStorage
+from agent_session_restore.models import SessionEntry
+from agent_session_restore.registry import SessionRegistry
+from agent_session_restore.storage import SessionStorage
 
 
 @pytest.fixture
@@ -50,3 +50,4 @@ def sample_entry(temp_dir: Path) -> SessionEntry:
         status="active",
         git_branch="feature/login",
     )
+

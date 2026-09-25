@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claude-session-restore"
-version = "0.1.0"
-description = "Windows-first fast resume & session registry manager for Claude Code fleets"
+name = "agent-session-restore"
+version = "0.2.0"
+description = "Windows-first fast resume & session registry manager for AI Agent fleets (Claude, Codex, Cursor, Antigravity, Hermes)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -31,8 +31,10 @@ rich = [
 ]
 
 [project.scripts]
-csr = "claude_session_restore.cli:main"
-claude-session-restore = "claude_session_restore.cli:main"
+asr = "agent_session_restore.cli:main"
+csr = "agent_session_restore.cli:main"
+agent-session-restore = "agent_session_restore.cli:main"
+claude-session-restore = "agent_session_restore.cli:main"
 
 [tool.uv]
 package = true

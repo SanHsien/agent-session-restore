@@ -2,12 +2,12 @@
 
 import json
 
-from claude_session_restore.hooks import (
+from agent_session_restore.hooks import (
     handle_session_end,
     handle_session_start,
     parse_hook_payload,
 )
-from claude_session_restore.models import SessionStatus
+from agent_session_restore.models import SessionStatus
 
 
 def test_parse_hook_payload_from_json():
@@ -63,3 +63,4 @@ def test_handle_session_end(registry, temp_dir):
     entry = registry.get("hook-sess-end")
     assert entry is not None
     assert entry.status == SessionStatus.CLOSED.value
+

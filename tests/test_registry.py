@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from claude_session_restore.models import SessionStatus
+from agent_session_restore.models import SessionStatus
 
 
 def test_registry_register_and_get(registry, temp_dir):
@@ -88,3 +88,4 @@ def test_registry_export_markdown(registry, temp_dir):
     assert "export-test" in md
     assert "sess-export" in md
     assert "CODEX" in md
+

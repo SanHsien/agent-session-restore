@@ -3,13 +3,41 @@ revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'linux'",
+    "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version < '3.15' and sys_platform == 'linux'",
 ]
 supported-markers = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
+]
+
+[[package]]
+name = "agent-session-restore"
+version = "0.2.0"
+source = { editable = "." }
+
+[package.optional-dependencies]
+rich = [
+    { name = "rich" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "rich", marker = "extra == 'rich'", specifier = ">=13.0.0" }]
+provides-extras = ["rich"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "ruff", specifier = ">=0.8.0" },
 ]
 
 [[package]]
@@ -68,34 +96,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8a/82/60367e58ef346a41ebc90d3f28593c1b8f5c2cb5314c7b2bbd98910ee131/ast_serialize-0.11.2-cp39-abi3-win32.whl", hash = "sha256:d70556a2f9230a44c99a655774cde823f056efc34466eabfb4085f0cb1ea9f99", size = 1125873, upload-time = "2026-09-13T18:48:50.661Z" },
     { url = "https://files.pythonhosted.org/packages/23/bf/b419c3205ce1143ba7c69baef4f0ba43c14d8712113bf34f9e0d27d609be/ast_serialize-0.11.2-cp39-abi3-win_amd64.whl", hash = "sha256:b9065dd23131a23b41f5bab3bf4e9b3c350a3fe8e36e8200eded9b729fcea484", size = 1165434, upload-time = "2026-09-13T18:48:52.169Z" },
     { url = "https://files.pythonhosted.org/packages/91/a7/c8bbb2173f7a7131b3b2412035b2d814ab5ef2ce9799bd06f07c451640e4/ast_serialize-0.11.2-cp39-abi3-win_arm64.whl", hash = "sha256:dab599cbdcb7b45b18c41fad746645580b3a24357082b7f0e8921cd373804f27", size = 1136031, upload-time = "2026-09-13T18:48:54.04Z" },
-]
-
-[[package]]
-name = "claude-session-restore"
-version = "0.1.0"
-source = { editable = "." }
-
-[package.optional-dependencies]
-rich = [
-    { name = "rich" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "rich", marker = "extra == 'rich'", specifier = ">=13.0.0" }]
-provides-extras = ["rich"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.13.0" },
-    { name = "pytest", specifier = ">=8.0.0" },
-    { name = "ruff", specifier = ">=0.8.0" },
 ]
 
 [[package]]

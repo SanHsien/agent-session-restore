@@ -1,9 +1,9 @@
-# claude-session-restore (csr) 🚀
+# agent-session-restore (asr / csr) 🚀
 
 > **Windows 11 原生優先的 Multi-Agent（Claude Code, Codex, Cursor, Antigravity, Hermes）艦隊級會話註冊與 30 秒閃電恢復工具**  
 > *Windows-first fast resume & session registry manager for AI Agent fleets (Claude, Codex, Cursor, Antigravity, Hermes).*
 
-[![CI](https://github.com/SanHsien/claude-session-restore/actions/workflows/ci.yml/badge.svg)](https://github.com/SanHsien/claude-session-restore/actions)
+[![CI](https://github.com/SanHsien/agent-session-restore/actions/workflows/ci.yml/badge.svg)](https://github.com/SanHsien/agent-session-restore/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011%20Native-0078D6.svg)](https://microsoft.com)

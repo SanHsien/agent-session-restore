@@ -1,8 +1,8 @@
-"""Tests for data models in claude_session_restore."""
+"""Tests for data models in agent_session_restore."""
 
 import pytest
 
-from claude_session_restore.models import (
+from agent_session_restore.models import (
     SessionEntry,
     SessionRegistryData,
     SessionStatus,
@@ -78,3 +78,4 @@ def test_session_registry_data_dict_roundtrip(sample_entry):
     loaded_entry = reloaded.sessions[sample_entry.session_id]
     assert loaded_entry.name == sample_entry.name
     assert loaded_entry.cwd == sample_entry.cwd
+

@@ -1,4 +1,4 @@
-"""Backward-compatible proxy module for claude_session_restore -> agent_session_restore."""
+"""agent-session-restore: Windows-first fast resume & session registry manager for AI Agent fleets."""
 
 from agent_session_restore.models import AgentType, SessionEntry, SessionRegistryData, SessionStatus
 from agent_session_restore.registry import SessionRegistry
@@ -13,3 +13,4 @@ __all__ = [
     "SessionStorage",
     "SessionRegistry",
 ]
+

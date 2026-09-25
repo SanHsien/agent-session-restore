@@ -2,7 +2,7 @@
 
 import json
 
-from claude_session_restore.cli import main
+from agent_session_restore.cli import main
 
 
 def test_cli_register_and_list(temp_registry_file, temp_dir, capsys):
@@ -123,3 +123,4 @@ def test_cli_install_hooks(capsys):
     out = capsys.readouterr().out
     assert "SessionStart" in out
     assert "SessionEnd" in out
+

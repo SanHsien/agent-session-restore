@@ -88,18 +88,29 @@ def handle_session_start(
             "systemMessage": f"[claude-session-restore] Warning: No session_id found for '{name}'."
         }
 
+    agent = str(
+        payload.get("agent")
+        or payload.get("agent_type")
+        or os.environ.get("AGENT_TYPE")
+        or "claude"
+    ).strip().lower()
+
+    custom_resume_cmd = payload.get("custom_resume_cmd") or os.environ.get("CUSTOM_RESUME_CMD")
+
     pid = os.getppid() if hasattr(os, "getppid") else None
 
     entry = reg.register(
         session_id=session_id,
         name=name,
         cwd=cwd,
+        agent=agent,
         status=SessionStatus.ACTIVE.value,
         pid=pid,
+        custom_resume_cmd=custom_resume_cmd,
     )
 
     return {
-        "systemMessage": f"Session tracked by claude-session-restore: '{entry.name}' [{session_id[:8]}]"
+        "systemMessage": f"Session tracked by claude-session-restore: [{entry.agent.upper()}] '{entry.name}' [{session_id[:8]}]"
     }
 
 

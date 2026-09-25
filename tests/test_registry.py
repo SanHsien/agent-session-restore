@@ -82,8 +82,9 @@ def test_registry_prune_stale(registry, temp_dir):
 
 
 def test_registry_export_markdown(registry, temp_dir):
-    registry.register(session_id="sess-export", name="export-test", cwd=str(temp_dir))
+    registry.register(session_id="sess-export", name="export-test", cwd=str(temp_dir), agent="codex")
     md = registry.export_markdown()
-    assert "# Claude Code Sessions" in md
+    assert "Sessions" in md
     assert "export-test" in md
     assert "sess-export" in md
+    assert "CODEX" in md

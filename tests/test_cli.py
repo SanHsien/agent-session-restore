@@ -83,7 +83,38 @@ def test_cli_export(temp_registry_file, temp_dir, capsys):
     ])
     assert ret == 0
     out = capsys.readouterr().out
-    assert "# Claude Code Sessions" in out
+    assert "Sessions" in out
+
+
+def test_cli_agent_filtering(temp_registry_file, temp_dir, capsys):
+    main([
+        "--file", str(temp_registry_file),
+        "register",
+        "--id", "cx-1",
+        "--name", "codex-task",
+        "--agent", "codex",
+        "--cwd", str(temp_dir),
+    ])
+    main([
+        "--file", str(temp_registry_file),
+        "register",
+        "--id", "cl-1",
+        "--name", "claude-task",
+        "--agent", "claude",
+        "--cwd", str(temp_dir),
+    ])
+
+    capsys.readouterr()
+    main([
+        "--file", str(temp_registry_file),
+        "list",
+        "--agent", "codex",
+        "--json",
+    ])
+    captured = capsys.readouterr().out
+    data = json.loads(captured)
+    assert len(data) == 1
+    assert data[0]["agent"] == "codex"
 
 
 def test_cli_install_hooks(capsys):

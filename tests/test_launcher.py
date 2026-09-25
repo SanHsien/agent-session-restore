@@ -44,9 +44,48 @@ def test_launch_nonexistent_directory(temp_dir):
     assert "Directory does not exist" in (res.error_message or "")
 
 
+def test_build_resume_commands_all_agents(temp_dir):
+    launcher = SessionLauncher(backend="wt")
+
+    # Codex
+    entry_codex = SessionEntry(session_id="codex-1", name="cx", cwd=str(temp_dir), agent="codex")
+    cmd_codex = launcher.build_resume_command(entry_codex)
+    assert "codex resume codex-1" in cmd_codex[-1]
+    assert "CODEX: cx" in cmd_codex
+
+    # Cursor
+    entry_cursor = SessionEntry(session_id="cursor-1", name="cr", cwd=str(temp_dir), agent="cursor")
+    cmd_cursor = launcher.build_resume_command(entry_cursor)
+    assert f"cursor '{temp_dir}'" in cmd_cursor[-1]
+    assert "CURSOR: cr" in cmd_cursor
+
+    # Antigravity
+    entry_agy = SessionEntry(session_id="agy-1", name="ag", cwd=str(temp_dir), agent="antigravity")
+    cmd_agy = launcher.build_resume_command(entry_agy)
+    assert "agy resume agy-1" in cmd_agy[-1]
+    assert "ANTIGRAVITY: ag" in cmd_agy
+
+    # Hermes
+    entry_hermes = SessionEntry(session_id="hermes-1", name="hm", cwd=str(temp_dir), agent="hermes")
+    cmd_hermes = launcher.build_resume_command(entry_hermes)
+    assert "hermes resume hermes-1" in cmd_hermes[-1]
+    assert "HERMES: hm" in cmd_hermes
+
+    # Custom
+    entry_custom = SessionEntry(
+        session_id="custom-1",
+        name="cs",
+        cwd=str(temp_dir),
+        agent="custom",
+        custom_resume_cmd="myagent start --task {id} --dir {cwd}",
+    )
+    cmd_custom = launcher.build_resume_command(entry_custom)
+    assert f"myagent start --task custom-1 --dir {temp_dir}" in cmd_custom[-1]
+
+
 def test_generate_powershell_script(sample_entry):
     launcher = SessionLauncher(backend="wt")
     script = launcher.generate_powershell_script([sample_entry])
-    assert "Restore-ClaudeSessions" in script or "Claude Code Session Restore Script" in script
+    assert "Session Restore Script" in script
     assert sample_entry.session_id in script
     assert sample_entry.name in script

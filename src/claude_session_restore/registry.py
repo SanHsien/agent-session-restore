@@ -45,10 +45,12 @@ class SessionRegistry:
         session_id: str,
         name: str | None = None,
         cwd: str | None = None,
+        agent: str = "claude",
         status: str = SessionStatus.ACTIVE.value,
         git_branch: str | None = None,
         pid: int | None = None,
         notes: str | None = None,
+        custom_resume_cmd: str | None = None,
     ) -> SessionEntry:
         """Register a new session or update an existing session."""
         reg_data = self.storage.load()
@@ -63,6 +65,8 @@ class SessionRegistry:
                 entry.name = name.strip()
             if cwd and cwd.strip():
                 entry.cwd = str(Path(cwd).resolve())
+            if agent:
+                entry.agent = agent.strip().lower()
             entry.status = status
             entry.updated_at = now
             if inferred_branch:
@@ -71,17 +75,21 @@ class SessionRegistry:
                 entry.pid = pid
             if notes is not None:
                 entry.notes = notes
+            if custom_resume_cmd is not None:
+                entry.custom_resume_cmd = custom_resume_cmd
         else:
             entry = SessionEntry(
                 session_id=session_id,
                 name=name or "",
                 cwd=target_cwd,
+                agent=agent or "claude",
                 status=status,
                 created_at=now,
                 updated_at=now,
                 git_branch=inferred_branch,
                 pid=pid,
                 notes=notes,
+                custom_resume_cmd=custom_resume_cmd,
             )
             reg_data.sessions[session_id] = entry
 
@@ -115,6 +123,7 @@ class SessionRegistry:
         self,
         active_only: bool = False,
         cwd_filter: str | None = None,
+        agent_filter: str | None = None,
     ) -> list[SessionEntry]:
         """List sessions ordered by most recently updated first."""
         reg_data = self.storage.load()
@@ -122,6 +131,10 @@ class SessionRegistry:
 
         if active_only:
             entries = [e for e in entries if e.is_active]
+
+        if agent_filter:
+            norm_agent = agent_filter.strip().lower()
+            entries = [e for e in entries if e.agent.lower() == norm_agent]
 
         if cwd_filter:
             norm_filter = str(Path(cwd_filter).resolve()).lower()
@@ -173,21 +186,22 @@ class SessionRegistry:
 
         return len(to_delete)
 
-    def export_markdown(self, active_only: bool = False) -> str:
+    def export_markdown(self, active_only: bool = False, agent_filter: str | None = None) -> str:
         """Render markdown table summary of tracked sessions."""
-        sessions = self.list_sessions(active_only=active_only)
+        sessions = self.list_sessions(active_only=active_only, agent_filter=agent_filter)
         lines = [
-            f"# Claude Code Sessions ({len(sessions)} tracked)",
+            f"# Multi-Agent Sessions ({len(sessions)} tracked)",
             "",
-            "| Session Name | ID | Status | Git Branch | Working Directory | Last Active |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- |",
+            "| Agent | Session Name | ID | Status | Git Branch | Working Directory | Last Active |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
         ]
         for s in sessions:
             status_icon = "🟢" if s.is_active else "⚪"
             branch = s.git_branch or "-"
             short_id = s.session_id[:12]
+            agent_badge = f"`{s.agent.upper()}`"
             lines.append(
-                f"| `{s.name}` | `{short_id}` | {status_icon} {s.status} | `{branch}` | `{s.cwd}` | {s.updated_at} |"
+                f"| {agent_badge} | `{s.name}` | `{short_id}` | {status_icon} {s.status} | `{branch}` | `{s.cwd}` | {s.updated_at} |"
             )
         lines.append("")
         return "\n".join(lines)

@@ -1,7 +1,7 @@
 # claude-session-restore (csr) 🚀
 
-> **Windows 11 原生優先的 Claude Code 艦隊級會話註冊與 30 秒閃電恢復工具**  
-> *Windows-first fast resume & session registry manager for Claude Code fleets.*
+> **Windows 11 原生優先的 Multi-Agent（Claude Code, Codex, Cursor, Antigravity, Hermes）艦隊級會話註冊與 30 秒閃電恢復工具**  
+> *Windows-first fast resume & session registry manager for AI Agent fleets (Claude, Codex, Cursor, Antigravity, Hermes).*
 
 [![CI](https://github.com/SanHsien/claude-session-restore/actions/workflows/ci.yml/badge.svg)](https://github.com/SanHsien/claude-session-restore/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
@@ -12,19 +12,18 @@
 
 ## 📖 痛點分析與核心理念 (Problem & Concept)
 
-現代重度 AI Agent 開發者（以 Claude Code 為核心）常面臨以下嚴峻痛點：
-- **每週系統重啟與更新**：Windows 11 自動更新或定時重啟後，正在運作中的 10～20 個 Claude Code 會話被強制中止。
-- **脈絡記憶斷層 (Context Loss)**：重啟後極難記住每個會話各自在處理什麼任務、原本在哪個目錄、對應哪條 git branch。
-- **手動恢復痛苦低效**：必須手動開啟終端機、逐一 `cd` 到各專案目錄、找出原本的 session ID 執行 `claude -r <id>`，往往耗費 15～30 分鐘且容易遺漏。
+現代重度 AI Agent 開發者常在多個 Agent 之間平行切換（如 **Claude Code**, **OpenAI Codex**, **Cursor**, **Antigravity (AGY)**, **Hermes** 等）：
+- **每週系統重啟與更新**：Windows 11 自動更新或定時重啟後，正在運作中的 10～20 個 Agent 會話被強制中止。
+- **跨 Agent 脈絡記憶斷層 (Context Loss)**：重啟後極難記住每個會話各自在處理什麼任務、使用哪種 Agent、原本在哪個目錄、對應哪條 git branch。
+- **手動恢復痛苦低效**：必須手動開啟終端機、逐一 `cd` 到各專案目錄、找出原本的 session ID 執行 `claude -r <id>`、`codex resume <id>`、`agy resume <id>`、`cursor .` 等，往往耗費 15～30 分鐘且容易遺漏。
 
 ### 本專案的解決架構
-1. **語義命名 (Naming)**：透過 `claude -n <name>` 或在對話中使用 `/rename <name>` 賦予會話明確任務標籤。
-2. **生命週期鉤子 (Hooks)**：
-   - `SessionStart` 鉤子在會話啟動時，自動將 `session_id`、`name`、`cwd` 與 `git_branch` 原子寫入註冊表。
-   - `SessionEnd` 鉤子在正常退出時標記會話為已關閉。
-   - **意外重啟保護**：遭遇突然重開機時，未完成的會話自動保持在 `active` 狀態！
-3. **30 秒閃電恢復引擎 (Fast Resume)**：
-   重開機後，只需執行單一腳本或指令，系統以 Windows Terminal (`wt.exe`) 分頁或獨立視窗，在 30 秒內自動將所有活躍會話（如 19 個會話）全數還原！
+1. **語義命名與 Agent 分類 (Naming & Typing)**：賦予會話明確任務標籤，並標註 Agent 種類（Claude / Codex / Cursor / Antigravity / Hermes / Custom）。
+2. **生命週期鉤子與註冊 (Hooks & Registry)**：
+   - 鉤子在會話啟動時自動寫入 `session_id`、`agent`、`name`、`cwd` 與 `git_branch`。
+   - 意外重啟時，未完成的會話自動保持在 `active` 狀態！
+3. **30 秒閃電跨 Agent 恢復引擎 (Fast Multi-Agent Restorer)**：
+   重開機後，只需執行單一腳本或指令，系統以 Windows Terminal (`wt.exe`) 分頁或獨立視窗，在 30 秒內自動將所有不同 Agent 的活躍會話全數還原！
 
 ---
 
@@ -32,13 +31,14 @@
 
 ```
 +------------------------------------------------------------------------------------+
-|                                Claude Code Sessions                                |
-|  [Session A] claude -n auth-fix      [Session B] claude -n ci-perf      ... (19+)   |
+|                                Multi-Agent Fleet Sessions                          |
+|  [Claude Code] claude -n auth-fix     [Codex] codex resume task-42                 |
+|  [Antigravity] agy resume flow-1      [Cursor] cursor /workspace                   |
 +------------------------------------------------------------------------------------+
-       | (SessionStart hook)                                  | (SessionEnd hook)
+       | (SessionStart hooks / CLI register)                  | (SessionEnd hook)
        v                                                      v
 +-----------------------------+                        +-----------------------------+
-|    hooks/session-start.py   |                        |    hooks/session-end.py     |
+|    Hooks & Auto-Registrar   |                        |    Session Cleanup/End      |
 +-----------------------------+                        +-----------------------------+
        |                                                      |
        +------------------------------+-----------------------+
@@ -47,6 +47,7 @@
                        +-----------------------------+
                        |    SessionRegistryManager   |
                        | - Atomic File Locking       |
+                       | - Multi-Agent Command Map   |
                        | - Auto-Branch Detection     |
                        | - Concurrency-Safe Writes   |
                        +-----------------------------+
@@ -62,21 +63,22 @@
 |                        Restore Engine (Post-Reboot / On-Demand)                    |
 |                                                                                    |
 |   +------------------------------+        +------------------------------------+   |
-|   |  Restore-ClaudeSessions.ps1  |   OR   |  csr restore -t wt                 |   |
+|   |  Restore-AgentSessions.ps1   |   OR   |  csr restore -t wt [--agent ...]   |   |
 |   +------------------------------+        +------------------------------------+   |
 |                 |                                      |                           |
 |                 +-------------------+------------------+                           |
 |                                     v                                              |
 |                    +----------------------------------+                            |
 |                    |   Windows Terminal (wt.exe)      |                            |
-|                    |   Tabs: [auth-fix] [ci-perf] ... |                            |
-|                    |   Command: claude -r <id>        |                            |
+|                    |   [CLAUDE] [CODEX] [AGY] [CURSOR]|                            |
 |                    +----------------------------------+                            |
 |                                     |                                              |
 |                                     v                                              |
-|                    All 19 sessions restored in ~30s!                               |
+|                    All 19+ sessions restored in ~30s!                              |
 +------------------------------------------------------------------------------------+
 ```
+
+---
 
 ---
 

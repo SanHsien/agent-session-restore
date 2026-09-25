@@ -18,6 +18,17 @@ class SessionStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class AgentType(str, Enum):
+    """Supported agent types."""
+
+    CLAUDE = "claude"
+    CODEX = "codex"
+    CURSOR = "cursor"
+    ANTIGRAVITY = "antigravity"
+    HERMES = "hermes"
+    CUSTOM = "custom"
+
+
 def _current_iso_timestamp() -> str:
     """Generate ISO 8601 UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
@@ -25,22 +36,30 @@ def _current_iso_timestamp() -> str:
 
 @dataclass
 class SessionEntry:
-    """Represents a single registered Claude Code session."""
+    """Represents a single registered agent session."""
 
     session_id: str
     name: str
     cwd: str
+    agent: str = AgentType.CLAUDE.value
     status: str = SessionStatus.ACTIVE.value
     created_at: str = field(default_factory=_current_iso_timestamp)
     updated_at: str = field(default_factory=_current_iso_timestamp)
     git_branch: str | None = None
     pid: int | None = None
     notes: str | None = None
+    custom_resume_cmd: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize paths and ensure required fields are valid."""
         if not self.session_id or not self.session_id.strip():
             raise ValueError("session_id must not be empty")
+
+        # Normalize agent type
+        if self.agent:
+            self.agent = self.agent.strip().lower()
+        else:
+            self.agent = AgentType.CLAUDE.value
 
         # Normalize working directory path
         try:
@@ -82,12 +101,14 @@ class SessionEntry:
             session_id=str(data.get("session_id", "")),
             name=str(data.get("name", "")),
             cwd=str(data.get("cwd", "")),
+            agent=str(data.get("agent", AgentType.CLAUDE.value)),
             status=str(data.get("status", SessionStatus.ACTIVE.value)),
             created_at=str(data.get("created_at", _current_iso_timestamp())),
             updated_at=str(data.get("updated_at", _current_iso_timestamp())),
             git_branch=data.get("git_branch"),
             pid=data.get("pid"),
             notes=data.get("notes"),
+            custom_resume_cmd=data.get("custom_resume_cmd"),
         )
 
 

@@ -20,15 +20,16 @@ def _render_table_plain(sessions: list[Any]) -> None:
         print("No sessions recorded.")
         return
 
-    header = f"{'STATUS':<8} {'NAME':<24} {'SESSION ID':<16} {'GIT BRANCH':<14} {'DIRECTORY'}"
+    header = f"{'AGENT':<12} {'STATUS':<8} {'NAME':<24} {'SESSION ID':<16} {'BRANCH':<14} {'DIRECTORY'}"
     print(header)
     print("-" * len(header) + "-" * 20)
     for s in sessions:
+        agent_tag = s.agent.upper()
         status_text = "[ACTIVE]" if s.is_active else "[CLOSED]"
         short_id = s.session_id[:12]
         branch = s.git_branch or "-"
         name = s.name[:23]
-        print(f"{status_text:<8} {name:<24} {short_id:<16} {branch:<14} {s.cwd}")
+        print(f"{agent_tag:<12} {status_text:<8} {name:<24} {short_id:<16} {branch:<14} {s.cwd}")
 
 
 def _render_table_rich(sessions: list[Any]) -> None:
@@ -42,9 +43,10 @@ def _render_table_rich(sessions: list[Any]) -> None:
             console.print("[dim]No sessions recorded.[/dim]")
             return
 
-        table = Table(title=f"Claude Code Sessions ({len(sessions)} recorded)")
+        table = Table(title=f"Multi-Agent Sessions ({len(sessions)} recorded)")
+        table.add_column("Agent", style="bold cyan")
         table.add_column("Status", justify="center")
-        table.add_column("Session Name", style="cyan", no_wrap=True)
+        table.add_column("Session Name", style="white", no_wrap=True)
         table.add_column("Session ID", style="magenta")
         table.add_column("Branch", style="green")
         table.add_column("Directory", style="yellow")
@@ -53,6 +55,7 @@ def _render_table_rich(sessions: list[Any]) -> None:
         for s in sessions:
             status_badge = "[green]● active[/green]" if s.is_active else "[dim]○ closed[/dim]"
             table.add_row(
+                s.agent.upper(),
                 status_badge,
                 s.name,
                 s.session_id[:12],
@@ -67,7 +70,7 @@ def _render_table_rich(sessions: list[Any]) -> None:
 
 
 def cmd_list(args: argparse.Namespace, registry: SessionRegistry) -> int:
-    sessions = registry.list_sessions(active_only=not args.all)
+    sessions = registry.list_sessions(active_only=not args.all, agent_filter=args.agent)
     if args.json:
         data = [s.to_dict() for s in sessions]
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -81,7 +84,7 @@ def cmd_list(args: argparse.Namespace, registry: SessionRegistry) -> int:
 
 
 def cmd_restore(args: argparse.Namespace, registry: SessionRegistry) -> int:
-    sessions = registry.list_sessions(active_only=not args.all)
+    sessions = registry.list_sessions(active_only=not args.all, agent_filter=args.agent)
     if not sessions:
         print("No sessions available to restore.")
         return 0
@@ -93,7 +96,7 @@ def cmd_restore(args: argparse.Namespace, registry: SessionRegistry) -> int:
         print(f"\n--- Dry Run: Launch commands for {len(sessions)} sessions ---")
         for s in sessions[: args.limit] if args.limit else sessions:
             cmd = launcher.build_resume_command(s)
-            print(f"[{s.name}] ({s.cwd}) -> {' '.join(cmd)}")
+            print(f"[{s.agent.upper()}] [{s.name}] ({s.cwd}) -> {' '.join(cmd)}")
         return 0
 
     if args.generate_script:
@@ -114,7 +117,7 @@ def cmd_restore(args: argparse.Namespace, registry: SessionRegistry) -> int:
     print(f"Done. Successfully launched: {success_count}, Failed: {fail_count}")
     for r in results:
         if not r.success:
-            print(f"  [FAILED] {r.session.name}: {r.error_message}", file=sys.stderr)
+            print(f"  [FAILED] [{r.session.agent.upper()}] {r.session.name}: {r.error_message}", file=sys.stderr)
 
     return 0 if fail_count == 0 else 1
 
@@ -124,10 +127,12 @@ def cmd_register(args: argparse.Namespace, registry: SessionRegistry) -> int:
         session_id=args.id,
         name=args.name,
         cwd=args.cwd,
+        agent=args.agent,
         git_branch=args.branch,
+        custom_resume_cmd=args.custom_cmd,
         status="active",
     )
-    print(f"Registered session '{entry.name}' ({entry.session_id}) in {entry.cwd}")
+    print(f"Registered [{entry.agent.upper()}] session '{entry.name}' ({entry.session_id}) in {entry.cwd}")
     return 0
 
 
@@ -154,9 +159,9 @@ def cmd_prune(args: argparse.Namespace, registry: SessionRegistry) -> int:
 
 def cmd_export(args: argparse.Namespace, registry: SessionRegistry) -> int:
     if args.format == "md":
-        content = registry.export_markdown(active_only=not args.all)
+        content = registry.export_markdown(active_only=not args.all, agent_filter=args.agent)
     else:
-        sessions = registry.list_sessions(active_only=not args.all)
+        sessions = registry.list_sessions(active_only=not args.all, agent_filter=args.agent)
         content = json.dumps([s.to_dict() for s in sessions], indent=2, ensure_ascii=False)
 
     if args.output:
@@ -200,7 +205,7 @@ def cmd_install_hooks(args: argparse.Namespace, registry: SessionRegistry | None
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="csr",
-        description="Fast session registry & resume manager for Claude Code fleets.",
+        description="Fast multi-agent session registry & resume manager (Claude, Codex, Cursor, Antigravity, Hermes).",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -213,8 +218,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     # list
-    p_list = subparsers.add_parser("list", help="List tracked Claude Code sessions")
+    p_list = subparsers.add_parser("list", help="List tracked agent sessions")
     p_list.add_argument("--all", "-a", action="store_true", help="Include closed sessions")
+    p_list.add_argument("--agent", help="Filter by agent type (e.g. claude, codex, cursor, antigravity, hermes)")
     p_list.add_argument("--json", action="store_true", help="Output raw JSON format")
 
     # restore
@@ -227,6 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Terminal backend to use (default: wt if Windows Terminal is installed, otherwise pwsh)",
     )
     p_restore.add_argument("--all", "-a", action="store_true", help="Restore all, including closed")
+    p_restore.add_argument("--agent", help="Restore only specific agent sessions (e.g. codex, claude)")
     p_restore.add_argument("--limit", "-n", type=int, default=None, help="Limit number of sessions to restore")
     p_restore.add_argument(
         "--delay",
@@ -244,10 +251,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     # register
     p_reg = subparsers.add_parser("register", help="Register or update a session entry")
-    p_reg.add_argument("--id", required=True, help="Session UUID")
+    p_reg.add_argument("--id", required=True, help="Session UUID or identifier")
     p_reg.add_argument("--name", help="Session semantic name")
     p_reg.add_argument("--cwd", help="Working directory (default: current directory)")
+    p_reg.add_argument(
+        "--agent",
+        default="claude",
+        help="Agent type: claude, codex, cursor, antigravity, hermes, custom (default: claude)",
+    )
     p_reg.add_argument("--branch", help="Git branch name")
+    p_reg.add_argument("--custom-cmd", help="Custom resume command template with {id}, {cwd}, {name}")
 
     # unregister
     p_unreg = subparsers.add_parser("unregister", help="Unregister or close a session entry")
@@ -268,6 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp = subparsers.add_parser("export", help="Export session registry as Markdown or JSON")
     p_exp.add_argument("--format", choices=["md", "json"], default="md", help="Export format")
     p_exp.add_argument("--all", action="store_true", help="Include closed sessions")
+    p_exp.add_argument("--agent", help="Filter by agent type")
     p_exp.add_argument("--output", "-o", help="Target output file path")
 
     # install-hooks

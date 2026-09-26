@@ -1,4 +1,4 @@
-# claude-session-restore 架構與運作原理
+# agent-session-restore 架構與運作原理
 
 ## 1. 系統架構圖 (Architecture Overview)
 
@@ -34,7 +34,7 @@
 |                        Restore Engine (Post-Reboot / On-Demand)                    |
 |                                                                                    |
 |   +------------------------------+        +------------------------------------+   |
-|   |  Restore-ClaudeSessions.ps1  |   OR   |  csr restore -t wt                 |   |
+|   |  Restore-AgentSessions.ps1   |   OR   |  asr restore -t wt                 |   |
 |   +------------------------------+        +------------------------------------+   |
 |                 |                                      |                           |
 |                 +-------------------+------------------+                           |

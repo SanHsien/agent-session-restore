@@ -85,7 +85,7 @@ def handle_session_start(
     if not session_id:
         # If no session ID found, we cannot track effectively
         return {
-            "systemMessage": f"[claude-session-restore] Warning: No session_id found for '{name}'."
+            "systemMessage": f"[agent-session-restore] Warning: No session_id found for '{name}'."
         }
 
     agent = str(
@@ -110,7 +110,7 @@ def handle_session_start(
     )
 
     return {
-        "systemMessage": f"Session tracked by claude-session-restore: [{entry.agent.upper()}] '{entry.name}' [{session_id[:8]}]"
+        "systemMessage": f"Session tracked by agent-session-restore: [{entry.agent.upper()}] '{entry.name}' [{session_id[:8]}]"
     }
 
 
@@ -135,8 +135,8 @@ def handle_session_end(
     if session_id:
         reg.unregister(session_id, hard_delete=False)
         return {
-            "systemMessage": f"Session closed in claude-session-restore: [{session_id[:8]}]"
+            "systemMessage": f"Session closed in agent-session-restore: [{session_id[:8]}]"
         }
 
-    return {"systemMessage": "[claude-session-restore] SessionEnd processed."}
+    return {"systemMessage": "[agent-session-restore] SessionEnd processed."}
 

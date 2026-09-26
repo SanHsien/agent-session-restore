@@ -1,4 +1,4 @@
-"""Pytest fixtures for claude-session-restore tests."""
+"""Pytest fixtures for agent-session-restore tests."""
 
 from __future__ import annotations
 

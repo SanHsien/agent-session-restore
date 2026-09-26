@@ -1,4 +1,4 @@
-"""Command line interface for claude-session-restore (csr)."""
+"""Command line interface for agent-session-restore (asr/csr)."""
 
 from __future__ import annotations
 

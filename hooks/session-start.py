@@ -18,10 +18,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 try:
-    try:
-        from agent_session_restore.hooks import handle_session_start
-    except ImportError:
-        from claude_session_restore.hooks import handle_session_start
+    from agent_session_restore.hooks import handle_session_start
 
     result = handle_session_start()
     print(json.dumps(result, ensure_ascii=False))

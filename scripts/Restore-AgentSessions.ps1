@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-    Restore-ClaudeSessions.ps1 — Windows 11 Fast Claude Code Session Restorer
+    Restore-AgentSessions.ps1 — Windows 11 Fast Multi-Agent Session Restorer
 
 .DESCRIPTION
     Reads ~/.claude/claude-sessions.json and restores active sessions
-    in tabs under Windows Terminal or separate PowerShell windows.
+    (Claude Code, Codex, Cursor, Antigravity, Hermes) in tabs under
+    Windows Terminal or separate PowerShell windows.
 
 .PARAMETER Terminal
     Terminal backend: 'wt' (Windows Terminal tabs), 'pwsh' (PowerShell 7), 'powershell' (Windows PS), 'cmd'.

@@ -49,7 +49,7 @@ class FileLock:
                 # Open or create lock file with read/write access
                 self._fd = os.open(str(self.lock_path), os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
-                if os.name == "nt":
+                if sys.platform == "win32":
                     import msvcrt
 
                     # LK_NBLCK: Non-blocking lock on 1 byte
@@ -57,7 +57,7 @@ class FileLock:
                 else:
                     import fcntl
 
-                    fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+                    fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
                 return  # Lock acquired successfully
             except OSError:
@@ -74,7 +74,7 @@ class FileLock:
     def release(self) -> None:
         if self._fd is not None:
             try:
-                if os.name == "nt":
+                if sys.platform == "win32":
                     import msvcrt
 
                     with contextlib.suppress(OSError, ValueError):
@@ -83,7 +83,7 @@ class FileLock:
                     import fcntl
 
                     with contextlib.suppress(OSError, ValueError):
-                        fcntl.flock(self._fd, fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                        fcntl.flock(self._fd, fcntl.LOCK_UN)
 
                 os.close(self._fd)
             except Exception:
@@ -124,7 +124,7 @@ class SessionStorage:
                 return SessionRegistryData.from_dict(data)
             except Exception as e:
                 # If corrupted, make a backup and start fresh to avoid total failure
-                sys.stderr.write(f"[claude-session-restore] Warning: Corrupt registry: {e}. Backing up.\n")
+                sys.stderr.write(f"[agent-session-restore] Warning: Corrupt registry: {e}. Backing up.\n")
                 with contextlib.suppress(Exception):
                     backup_path = self.file_path.with_suffix(f".corrupt.{int(time.time())}.json")
                     self.file_path.rename(backup_path)

@@ -90,7 +90,7 @@
   - 支援 **PowerShell (`pwsh.exe`)** 獨立視窗與 **CMD** 模式。
 - **🛡️ 跨進程原子安全鎖定**：採用 Windows `msvcrt` 檔案鎖定與臨時檔原子替換（`os.replace`），即使十幾個會話同時 SessionStart 也不會發生 Race Condition 或 JSON 毀損。
 - **🌿 智慧元資料解析**：會話啟動時自動萃取 Git Branch、工作目錄絕對路徑與 Process ID。
-- **🧰 雙模體驗**：提供 Python CLI (`csr`) 與原生 PowerShell 腳本 (`Restore-ClaudeSessions.ps1`)。
+- **🧰 雙模體驗**：提供 Python CLI (`csr`/`asr`) 與原生 PowerShell 腳本 (`Restore-AgentSessions.ps1`)。
 
 ---
 
@@ -101,7 +101,7 @@
 
 ```powershell
 # 進入專案目錄
-cd claude-session-restore
+cd agent-session-restore
 
 # 使用 uv 同步環境
 $env:UV_LINK_MODE="copy"
@@ -125,13 +125,13 @@ pwsh ./scripts/Install-Hooks.ps1
     "SessionStart": [
       {
         "matcher": "startup|clear|resume",
-        "command": "python \"C:/path/to/claude-session-restore/hooks/session-start.py\""
+        "command": "python \"C:/path/to/agent-session-restore/hooks/session-start.py\""
       }
     ],
     "SessionEnd": [
       {
         "matcher": ".*",
-        "command": "python \"C:/path/to/claude-session-restore/hooks/session-end.py\""
+        "command": "python \"C:/path/to/agent-session-restore/hooks/session-end.py\""
       }
     ]
   }
@@ -146,11 +146,11 @@ pwsh ./scripts/Install-Hooks.ps1
 
 #### 使用 PowerShell 腳本：
 ```powershell
-pwsh ./scripts/Restore-ClaudeSessions.ps1
+pwsh ./scripts/Restore-AgentSessions.ps1
 ```
-- 以 Windows Terminal 分頁開啟：`./scripts/Restore-ClaudeSessions.ps1 -Terminal wt`
-- 以獨立視窗開啟：`./scripts/Restore-ClaudeSessions.ps1 -Terminal pwsh`
-- 僅預覽不啟動：`./scripts/Restore-ClaudeSessions.ps1 -DryRun`
+- 以 Windows Terminal 分頁開啟：`./scripts/Restore-AgentSessions.ps1 -Terminal wt`
+- 以獨立視窗開啟：`./scripts/Restore-AgentSessions.ps1 -Terminal pwsh`
+- 僅預覽不啟動：`./scripts/Restore-AgentSessions.ps1 -DryRun`
 
 #### 或使用 CLI 工具 (`csr`)：
 ```powershell

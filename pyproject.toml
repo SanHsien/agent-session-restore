@@ -61,12 +61,13 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.10"
+platform = "win32"
 strict = true
 warn_unused_configs = true
 pretty = true
 
 [[tool.mypy.overrides]]
-module = ["rich.*", "fcntl"]
+module = ["rich.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

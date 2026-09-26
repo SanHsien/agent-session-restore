@@ -56,7 +56,9 @@ def test_build_resume_commands_all_agents(temp_dir):
     # Cursor
     entry_cursor = SessionEntry(session_id="cursor-1", name="cr", cwd=str(temp_dir), agent="cursor")
     cmd_cursor = launcher.build_resume_command(entry_cursor)
-    assert f"cursor '{temp_dir}'" in cmd_cursor[-1]
+    # Compare against the resolved cwd (SessionEntry normalizes it via Path.resolve(),
+    # which can expand short 8.3-style Windows paths, e.g. on GitHub Actions runners).
+    assert f"cursor '{entry_cursor.cwd}'" in cmd_cursor[-1]
     assert "CURSOR: cr" in cmd_cursor
 
     # Antigravity
@@ -80,7 +82,7 @@ def test_build_resume_commands_all_agents(temp_dir):
         custom_resume_cmd="myagent start --task {id} --dir {cwd}",
     )
     cmd_custom = launcher.build_resume_command(entry_custom)
-    assert f"myagent start --task custom-1 --dir {temp_dir}" in cmd_custom[-1]
+    assert f"myagent start --task custom-1 --dir {entry_custom.cwd}" in cmd_custom[-1]
 
 
 def test_generate_powershell_script(sample_entry):

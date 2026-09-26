@@ -1,8 +1,8 @@
 # agent-session-restore (asr / csr)
 
-[English](README.en.md) | 繁體中文（本頁）
+[繁體中文](README.md) | English (this page)
 
-> Windows 11 原生優先的會話註冊與 30 秒閃電恢復工具。Claude Code 具備自動 Hook 追蹤；Codex、Cursor、Antigravity、Hermes 為手動註冊 + 範本式恢復指令（詳見下方「各 Agent 支援程度」）。
+> Windows-11-first session registry and fast-resume tool. Claude Code has real automatic hook tracking; Codex, Cursor, Antigravity, and Hermes are manual registration plus templated resume commands (see "Per-agent support level" below).
 
 [![CI](https://github.com/SanHsien/agent-session-restore/actions/workflows/ci.yml/badge.svg)](https://github.com/SanHsien/agent-session-restore/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
@@ -11,37 +11,37 @@
 
 ---
 
-## 痛點分析與核心理念 (Problem & Concept)
+## Problem & Concept
 
-重度 AI Agent 開發者常在多個 Agent 之間平行切換（如 Claude Code、OpenAI Codex、Cursor、Antigravity、Hermes 等）：
-- 每週系統重啟與更新：Windows 11 自動更新或定時重啟後，正在運作中的多個 Agent 會話被強制中止。
-- 跨 Agent 脈絡記憶斷層：重啟後很難記住每個會話各自在處理什麼任務、使用哪種 Agent、原本在哪個目錄、對應哪條 git branch。
-- 手動恢復耗時：必須手動開啟終端機、逐一 cd 到各專案目錄、找出原本的 session ID 再執行對應指令，往往耗費 15 到 30 分鐘且容易遺漏。
+Heavy AI agent users routinely juggle multiple agents in parallel (Claude Code, OpenAI Codex, Cursor, Antigravity, Hermes, ...):
+- Weekly reboots and updates: Windows 11 auto-update or a scheduled restart force-kills a dozen or more running agent sessions.
+- Cross-agent context loss: after a reboot it is hard to remember what each session was doing, which agent it used, which directory it was in, and which git branch it was on.
+- Manual resume is slow: you have to open a terminal, cd into each project directory, find the original session ID, and run the right resume command by hand, often 15 to 30 minutes and easy to miss one.
 
-### 各 Agent 支援程度（誠實說明）
+### Per-agent support level (honest breakdown)
 
-本專案對不同 Agent 的支援程度並不一致，請依此決定是否適合你的工作流：
+Support is not uniform across agents. Check this table before relying on it for your workflow:
 
-| Agent | 追蹤方式 | 說明 |
+| Agent | Tracking | Notes |
 | :--- | :--- | :--- |
-| Claude Code | 自動（SessionStart / SessionEnd Hook） | 唯一有真正自動整合的 Agent；Hook 會在會話啟動與結束時自動寫入/更新/關閉登錄檔項目。 |
-| Codex | 手動註冊 | 需自行執行 csr register --agent codex ...；恢復時使用範本指令 codex resume 加上 id，本專案不會自動偵測 Codex 會話。 |
-| Cursor | 手動註冊 | 同上，範本指令為 cursor 加上工作目錄。 |
-| Antigravity | 手動註冊 | 同上，範本指令為 agy resume 加上 id。 |
-| Hermes | 手動註冊 | 同上，範本指令為 hermes resume 加上 id。 |
+| Claude Code | Automatic (SessionStart / SessionEnd hooks) | The only agent with real automatic integration; hooks write, update, and close registry entries when a session starts and ends. |
+| Codex | Manual registration | You must run csr register --agent codex ... yourself; resume uses the template codex resume plus id. This repo does not auto-detect Codex sessions. |
+| Cursor | Manual registration | Same as above; the resume template is cursor plus the working directory. |
+| Antigravity | Manual registration | Same as above; the resume template is agy resume plus id. |
+| Hermes | Manual registration | Same as above; the resume template is hermes resume plus id. |
 
-簡言之：Claude Code 是掛上就自動運作，其餘四種 Agent 是你（或該 Agent 自己的工具鏈）要自己呼叫 csr register，本專案再幫你把恢復指令排好。
+In short: Claude Code works automatically once the hooks are installed. The other four agents need you (or that agent's own tooling) to call csr register yourself; this repo then handles building and launching the resume command.
 
-### 本專案的解決架構
-1. 語義命名與 Agent 分類：賦予會話明確任務標籤，並標註 Agent 種類（Claude / Codex / Cursor / Antigravity / Hermes / Custom）。
-2. 生命週期 Hook 與註冊（僅 Claude Code 自動）：
-   - Hook 在 Claude Code 會話啟動時自動寫入 session_id、agent、name、cwd 與 git_branch。
-   - 意外重啟時，未正常結束的會話自動保持在 active 狀態。
-3. 30 秒閃電恢復引擎：重開機後執行單一腳本或指令，系統以 Windows Terminal (wt.exe) 分頁或獨立視窗，快速將已登錄的活躍會話全數還原。
+### How it solves this
+1. Semantic naming and agent typing: each session gets a clear task label and an agent tag (Claude / Codex / Cursor / Antigravity / Hermes / Custom).
+2. Lifecycle hooks and registration (Claude Code only, automatic):
+   - The hook writes session_id, agent, name, cwd, and git_branch automatically when a Claude Code session starts.
+   - On an unexpected restart, a session that never got a clean SessionEnd stays marked active.
+3. Fast restore engine: after a reboot, run one script or command and the tool relaunches every registered active session in Windows Terminal tabs or separate windows.
 
 ---
 
-## 運作架構圖 (Architecture)
+## Architecture
 
 ```
 +------------------------------------------------------------------------------------+
@@ -52,7 +52,7 @@
        | (SessionStart hook: Claude Code only)                | (SessionEnd hook: Claude Code only)
        v                                                      v
 +-----------------------------+                        +-----------------------------+
-|  Hook 自動註冊（僅 Claude） |                        |    Session Cleanup/End      |
+|  Auto-register hook (Claude)|                        |    Session Cleanup/End      |
 +-----------------------------+                        +-----------------------------+
        |                                                      |
        +------------------------------+-----------------------+
@@ -91,21 +91,21 @@
 
 ---
 
-## 核心特色 (Features)
+## Features
 
-- 批次快速恢復：智慧排程每個會話啟動間隔（預設 0.3 秒），平滑避免 CPU 與磁碟 I/O 尖峰。
-- Windows 11 原生深度適配：支援 Windows Terminal (wt.exe) 分頁標籤，並自動設定 Tab Title 為會話名稱；也支援 PowerShell (pwsh.exe) 獨立視窗與 CMD 模式。
-- 跨進程原子安全鎖定：採用 Windows msvcrt 檔案鎖定（POSIX 上為 fcntl）與臨時檔原子替換（os.replace），避免多個會話同時寫入造成 Race Condition 或 JSON 毀損。
-- 智慧元資料解析：Claude Code 會話啟動時自動萃取 Git Branch、工作目錄絕對路徑與 Process ID。
-- 雙模體驗：提供 Python CLI (csr/asr) 與原生 PowerShell 腳本 (Restore-AgentSessions.ps1)。
+- Fast batch restore: sessions launch with a small delay between each one (0.3s default) to smooth out CPU/disk I/O spikes.
+- Deep Windows 11 integration: Windows Terminal (wt.exe) tabs with auto-set tab titles, plus standalone PowerShell (pwsh.exe) or CMD windows.
+- Atomic, cross-process safe locking: Windows msvcrt file locking (fcntl on POSIX) plus atomic temp-file replacement (os.replace), so concurrent session starts never race or corrupt the JSON file.
+- Smart metadata capture: Claude Code sessions auto-capture git branch, absolute working directory, and process ID.
+- Two ways to use it: a Python CLI (csr/asr) and a native PowerShell script (Restore-AgentSessions.ps1).
 
 ---
 
-## 快速安裝與設定 (Getting Started)
+## Getting Started
 
-### 1. 取得專案與建置環境
+### 1. Get the project and set up the environment
 
-本專案採用 uv 工具鏈：
+This project uses the uv toolchain:
 
 ```powershell
 cd agent-session-restore
@@ -113,17 +113,17 @@ $env:UV_LINK_MODE="copy"
 uv sync --link-mode=copy
 ```
 
-### 2. 設定 Claude Code Hooks（僅 Claude Code 需要，其他 Agent 不適用）
+### 2. Configure Claude Code hooks (Claude Code only, not needed for the other agents)
 
-將 Hooks 掛載至 ~/.claude/settings.json：
+Add the hooks to ~/.claude/settings.json:
 
-方式 A：執行自動安裝腳本（推薦）
+Option A: run the install script (recommended)
 ```powershell
 pwsh ./scripts/Install-Hooks.ps1
 ```
-（腳本會先自動備份原有的 settings.json 再進行安全合併）
+(the script backs up your existing settings.json before merging safely)
 
-方式 B：手動添加設定，在 ~/.claude/settings.json 中加入：
+Option B: add the config manually to ~/.claude/settings.json:
 ```json
 {
   "hooks": {
@@ -143,9 +143,9 @@ pwsh ./scripts/Install-Hooks.ps1
 }
 ```
 
-### 3. 為 Codex / Cursor / Antigravity / Hermes 手動註冊會話
+### 3. Manually register Codex / Cursor / Antigravity / Hermes sessions
 
-這四種 Agent 沒有自動 Hook，需要自行呼叫 csr register：
+These four agents have no automatic hook, so you call csr register yourself:
 ```powershell
 uv run csr register --id codex-task-42 --agent codex --cwd C:\path\to\project --name "task-42"
 uv run csr register --id cursor-session-1 --agent cursor --cwd C:\path\to\project
@@ -153,46 +153,46 @@ uv run csr register --id cursor-session-1 --agent cursor --cwd C:\path\to\projec
 
 ---
 
-## 使用方法 (Usage)
+## Usage
 
-### 1. 開發機重啟後：一鍵恢復所有已登錄會話
+### 1. After a dev machine reboot: restore every registered session in one step
 
-使用 PowerShell 腳本：
+Using the PowerShell script:
 ```powershell
 pwsh ./scripts/Restore-AgentSessions.ps1
 ```
-- 以 Windows Terminal 分頁開啟：./scripts/Restore-AgentSessions.ps1 -Terminal wt
-- 以獨立視窗開啟：./scripts/Restore-AgentSessions.ps1 -Terminal pwsh
-- 僅預覽不啟動：./scripts/Restore-AgentSessions.ps1 -DryRun
+- Open in Windows Terminal tabs: ./scripts/Restore-AgentSessions.ps1 -Terminal wt
+- Open in standalone windows: ./scripts/Restore-AgentSessions.ps1 -Terminal pwsh
+- Preview only, no launch: ./scripts/Restore-AgentSessions.ps1 -DryRun
 
-或使用 CLI 工具 (csr)：
+Or using the CLI (csr):
 ```powershell
 uv run csr restore -t wt
 uv run csr restore --dry-run
 uv run csr restore --generate-script ./restore-fleet.ps1
 ```
 
-### 2. 檢視目前追蹤的會話清單
+### 2. List currently tracked sessions
 ```powershell
 uv run csr list
 uv run csr list --all
 uv run csr list --json
 ```
 
-### 3. 清理過期會話
+### 3. Prune stale sessions
 ```powershell
 uv run csr prune --days 14
 uv run csr prune --missing-dirs
 ```
 
-### 4. 導出會話清單報告
+### 4. Export a session report
 ```powershell
 uv run csr export --format md --output fleet-status.md
 ```
 
 ---
 
-## 測試與品質檢驗 (Testing & Quality Gates)
+## Testing & Quality Gates
 
 ```powershell
 uv run pytest -v
@@ -202,6 +202,6 @@ uv run mypy src
 
 ---
 
-## 授權條款 (License)
+## License
 
 MIT License. Copyright (c) 2026 SanHsien.

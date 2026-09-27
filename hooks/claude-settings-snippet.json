@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|resume",
+        "command": "python \"<REPO_ROOT>/hooks/session-start.py\""
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": ".*",
+        "command": "python \"<REPO_ROOT>/hooks/session-end.py\""
+      }
+    ]
+  }
+}

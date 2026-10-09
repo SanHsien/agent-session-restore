@@ -45,10 +45,11 @@ environments = [
 ]
 
 [dependency-groups]
+# 開發閘門已驗證的工具基準；與已審查的 uv.lock 保持一致。
 dev = [
     "pytest>=9.1.1",
-    "ruff>=0.16.9",
-    "mypy>=2.3.1",
+    "ruff>=0.16.10",
+    "mypy>=2.4.0",
 ]
 
 [tool.ruff]

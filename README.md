@@ -202,6 +202,10 @@ uv run mypy src
 
 ---
 
+## 多 Agent 流水線
+
+本 repo 是 [agent-relay](https://github.com/SanHsien/agent-relay) 多 Agent 派工與驗收流水線的一環（角色：會話登記；agent-relay 信件寫 `--project asr:<會話名>` 時，用它的登記檔找專案路徑）。協定規格與所有相關 repo 的總目錄見 agent-relay。
+
 ## 授權條款 (License)
 
 MIT License. Copyright (c) 2026 SanHsien.

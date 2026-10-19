@@ -202,6 +202,10 @@ uv run mypy src
 
 ---
 
+## Multi-agent pipeline
+
+This repo is part of the [agent-relay](https://github.com/SanHsien/agent-relay) multi-agent dispatch and verification pipeline (role: session registry; when an agent-relay letter uses `--project asr:<session-name>`, its registry file is used to find the project path). The protocol spec and the index of all related repos live in agent-relay.
+
 ## License
 
 MIT License. Copyright (c) 2026 SanHsien.

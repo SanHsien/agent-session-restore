@@ -48,7 +48,7 @@ environments = [
 # 開發閘門已驗證的工具基準；與已審查的 uv.lock 保持一致。
 dev = [
     "pytest>=9.1.1",
-    "ruff>=0.16.10",
+    "ruff>=0.17.2",
     "mypy>=2.4.0",
 ]
 

@@ -177,3 +177,27 @@ def test_launch_session_never_uses_shell_true(temp_dir):
     # cmd.exe/COMSPEC on top of any shell text this module already built and
     # quoted itself -- a double-parsing hazard this design avoids entirely.
     assert kwargs.get("shell", False) is False
+
+
+def test_cmd_backend_passes_one_raw_command_line_not_an_argv_list(temp_dir):
+    # On Windows, Popen(list) re-quotes every element with list2cmdline, which
+    # wraps the already cmd-quoted title in a second pair of quotes and
+    # backslash-escapes the inner ones (cmd.exe does not understand that).
+    # `start` then sees the title as `\"CURSOR:` and runs `plain\"` as a
+    # program ("Windows cannot find 'plain\'"). The title always contains a
+    # space ("AGENT: name"), so every cmd launch was affected. The cmd backend
+    # must therefore hand Popen the exact string that quote_cmd_token built.
+    # Popen is mocked: nothing is ever started by this test.
+    project_dir = temp_dir / "proj"
+    project_dir.mkdir()
+    entry = SessionEntry(session_id="ok-id-4", name="plain", cwd=str(project_dir), agent="cursor")
+    launcher = SessionLauncher(backend="cmd")
+
+    with patch("agent_session_restore.launcher.subprocess.Popen") as mock_popen:
+        res = launcher.launch_session(entry)
+
+    assert res.success is True
+    popen_args = mock_popen.call_args.args[0]
+    assert isinstance(popen_args, str)
+    assert popen_args == " ".join(res.command)
+    assert '"CURSOR: plain"' in popen_args

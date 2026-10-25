@@ -211,8 +211,13 @@ class SessionLauncher:
             # build_resume_command. Setting shell=True here would additionally
             # re-parse the whole argv list through cmd.exe/COMSPEC, which is
             # exactly the double-parsing hazard this design avoids.
+            # The cmd backend is a single command line that cmd.exe re-parses;
+            # it is already quoted for cmd by quote_cmd_token. Passing it as a
+            # list would make Python's list2cmdline quote it a second time
+            # (backslash-escaping the inner quotes), which cmd.exe misreads.
+            popen_args: str | list[str] = " ".join(cmd) if self.backend == "cmd" else cmd
             subprocess.Popen(
-                cmd,
+                popen_args,
                 cwd=session.cwd,
                 creationflags=flags,
             )

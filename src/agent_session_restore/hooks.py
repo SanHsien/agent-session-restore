@@ -12,12 +12,25 @@ from agent_session_restore.models import SessionStatus
 from agent_session_restore.registry import SessionRegistry
 
 
+def _read_stdin_utf8() -> str:
+    """Read stdin as UTF-8 (Claude Code's encoding), not the locale code page.
+
+    sys.stdin decodes with the console/ANSI code page on Windows (cp950 on a
+    Traditional Chinese system), which garbles or rejects non-ASCII names and
+    paths. Fall back to the text layer only for stand-ins without a buffer.
+    """
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is None:
+        return str(sys.stdin.read())
+    return bytes(buffer.read()).decode("utf-8-sig", errors="replace")
+
+
 def parse_hook_payload(raw_input: str | None = None) -> dict[str, Any]:
     """Parse JSON payload from stdin or given string. Returns dict with fallback."""
     if raw_input is None:
         try:
             if not sys.stdin.isatty():
-                raw_input = sys.stdin.read()
+                raw_input = _read_stdin_utf8()
         except Exception:
             raw_input = None
 

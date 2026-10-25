@@ -53,3 +53,26 @@ def test_env_path_override(temp_dir, monkeypatch):
     path = get_default_registry_path()
     assert path == custom_path.resolve()
 
+
+
+def test_storage_read_error_is_not_treated_as_corruption(storage, temp_registry_file, sample_entry):
+    # A transient read failure (antivirus/indexer holding the file, permission
+    # error) is not a corrupt registry. Treating it as one renamed the good
+    # file away and returned an empty registry, and the caller's next save()
+    # then wrote that empty registry over the user's sessions.
+    from pathlib import Path
+    from unittest.mock import patch
+
+    import pytest
+
+    data = storage.load()
+    data.sessions[sample_entry.session_id] = sample_entry
+    storage.save(data)
+
+    locked = PermissionError("locked by another process")
+    with patch.object(Path, "read_text", side_effect=locked), pytest.raises(PermissionError):
+        storage.load()
+
+    assert temp_registry_file.exists()
+    assert list(temp_registry_file.parent.glob("*.corrupt.*.json")) == []
+    assert sample_entry.session_id in storage.load().sessions

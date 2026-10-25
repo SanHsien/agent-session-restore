@@ -147,6 +147,11 @@ class SessionStorage:
                 if not isinstance(data, dict):
                     return SessionRegistryData()
                 return SessionRegistryData.from_dict(data)
+            except OSError:
+                # An I/O failure says nothing about the file's content. Do not
+                # move a possibly healthy registry aside and report it empty
+                # (the next save() would overwrite it); let the caller fail.
+                raise
             except Exception as e:
                 # If corrupted, make a backup and start fresh to avoid total failure
                 sys.stderr.write(f"[agent-session-restore] Warning: Corrupt registry: {e}. Backing up.\n")

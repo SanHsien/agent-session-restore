@@ -39,8 +39,20 @@ def quote_cmd_token(value: str) -> str:
     caret so cmd.exe treats it as a literal character rather than as a
     control operator or variable-expansion marker.
     """
+    needs_quotes = not value or any(c.isspace() for c in value)
+
+    if needs_quotes and '"' not in value:
+        # Inside a quoted string cmd.exe treats & | < > ( ) @ ^ literally, and
+        # a caret there is NOT consumed -- it would end up in the value (a path
+        # like "Program Files (x86)" would become "...^(x86^)" and not exist).
+        # Only variable expansion (% and delayed !) still happens in quotes, so
+        # only those are caret-escaped. This is safe only because there is no
+        # embedded quote that could end the quoted region early.
+        escaped = "".join(("^" + ch) if ch in "%!" else ch for ch in value)
+        return f'"{escaped}"'
+
     escaped = "".join(("^" + ch) if ch in _CMD_METACHARS else ch for ch in value)
-    if not escaped or any(c.isspace() for c in escaped):
+    if needs_quotes:
         escaped = f'"{escaped}"'
     return escaped
 

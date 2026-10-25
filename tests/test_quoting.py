@@ -59,7 +59,29 @@ def test_format_argv_cmd_only_escapes_tokens_that_need_it():
     assert result == "claude -r abc-123"
 
 
-def test_format_argv_cmd_escapes_dangerous_token():
+def test_format_argv_cmd_keeps_metacharacters_inert_inside_quotes():
+    # The whole token is in quotes, where & is literal to cmd.exe. A caret in
+    # there would not be removed by cmd.exe: it would reach the program.
     result = format_argv_cmd(["cursor", "C:/proj & calc"])
-    assert "^&" in result
-    assert result.count('"') >= 2
+    assert result == 'cursor "C:/proj & calc"'
+
+
+def test_quote_cmd_token_does_not_corrupt_a_path_with_spaces_and_parentheses():
+    # "Program Files (x86)" style paths: carets inside the quotes are literal,
+    # so the old output named a directory that does not exist.
+    path = r"C:\Program Files (x86)\my app"
+    assert quote_cmd_token(path) == '"' + path + '"'
+
+
+def test_quote_cmd_token_still_escapes_percent_inside_quotes():
+    quoted = quote_cmd_token("my %PATH% dir")
+    assert quoted.startswith('"') and quoted.endswith('"')
+    assert "^%" in quoted
+
+
+def test_quote_cmd_token_with_quote_and_whitespace_escapes_everything():
+    # A literal double quote flips cmd.exe's quote state, so every following
+    # metacharacter must stay caret-escaped (nothing may rely on being quoted).
+    quoted = quote_cmd_token('say "hi" & calc')
+    assert "^&" in quoted
+    assert '^"' in quoted

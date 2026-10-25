@@ -53,11 +53,39 @@ class SessionRegistry:
         custom_resume_cmd: str | None = None,
     ) -> SessionEntry:
         """Register a new session or update an existing session."""
-        reg_data = self.storage.load()
-        now = _current_iso_timestamp()
-
+        # Resolve cwd and the git branch before taking the lock: `git` can take
+        # up to its timeout, and the lock should only cover the read-modify-write.
         target_cwd = cwd or str(Path.cwd())
         inferred_branch = git_branch or detect_git_branch(target_cwd)
+        with self.storage.transaction():
+            return self._register_locked(
+                session_id,
+                name,
+                cwd,
+                target_cwd,
+                agent,
+                status,
+                inferred_branch,
+                pid,
+                notes,
+                custom_resume_cmd,
+            )
+
+    def _register_locked(
+        self,
+        session_id: str,
+        name: str | None,
+        cwd: str | None,
+        target_cwd: str,
+        agent: str,
+        status: str,
+        inferred_branch: str | None,
+        pid: int | None,
+        notes: str | None,
+        custom_resume_cmd: str | None,
+    ) -> SessionEntry:
+        reg_data = self.storage.load()
+        now = _current_iso_timestamp()
 
         if session_id in reg_data.sessions:
             entry = reg_data.sessions[session_id]
@@ -99,6 +127,10 @@ class SessionRegistry:
 
     def unregister(self, session_id: str, hard_delete: bool = False) -> bool:
         """Mark a session as closed, or completely delete it if hard_delete is True."""
+        with self.storage.transaction():
+            return self._unregister_locked(session_id, hard_delete)
+
+    def _unregister_locked(self, session_id: str, hard_delete: bool) -> bool:
         reg_data = self.storage.load()
         if session_id not in reg_data.sessions:
             return False
@@ -155,6 +187,12 @@ class SessionRegistry:
         remove_missing_cwd: bool = False,
     ) -> int:
         """Prune stale sessions. Returns count of pruned sessions."""
+        with self.storage.transaction():
+            return self._prune_locked(max_age_days, keep_active, remove_missing_cwd)
+
+    def _prune_locked(
+        self, max_age_days: int, keep_active: bool, remove_missing_cwd: bool
+    ) -> int:
         reg_data = self.storage.load()
         now = datetime.now(timezone.utc)
         to_delete: list[str] = []

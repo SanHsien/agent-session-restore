@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Generator
@@ -98,15 +99,39 @@ class SessionStorage:
     def __init__(self, file_path: Path | None = None) -> None:
         self.file_path = (file_path or get_default_registry_path()).resolve()
         self.lock_path = self.file_path.with_name(f"{self.file_path.name}.lock")
+        self._thread_lock = threading.RLock()
+        self._lock_depth = 0
 
     @contextlib.contextmanager
     def _locked(self) -> Generator[None, None, None]:
-        lock = FileLock(self.lock_path)
-        lock.acquire()
-        try:
+        """Hold the registry lock; re-entrant so load()/save() can nest in transaction()."""
+        with self._thread_lock:
+            if self._lock_depth > 0:
+                self._lock_depth += 1
+                try:
+                    yield
+                finally:
+                    self._lock_depth -= 1
+                return
+
+            lock = FileLock(self.lock_path)
+            lock.acquire()
+            self._lock_depth = 1
+            try:
+                yield
+            finally:
+                self._lock_depth = 0
+                lock.release()
+
+    @contextlib.contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Hold the lock across a whole load -> modify -> save cycle.
+
+        load() and save() each lock on their own, so without this a concurrent
+        writer can slip in between them and its update is overwritten.
+        """
+        with self._locked():
             yield
-        finally:
-            lock.release()
 
     def load(self) -> SessionRegistryData:
         """Load session registry from disk. Returns empty registry if file doesn't exist."""

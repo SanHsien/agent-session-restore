@@ -89,3 +89,42 @@ def test_registry_export_markdown(registry, temp_dir):
     assert "sess-export" in md
     assert "CODEX" in md
 
+
+
+def test_concurrent_registers_do_not_lose_updates(temp_dir):
+    # Several SessionStart hooks run at once when a fleet is restored. Each
+    # register() is load -> modify -> save; if the lock is dropped between the
+    # load and the save, a hook overwrites the entry another hook just wrote.
+    import threading
+
+    from agent_session_restore.registry import SessionRegistry
+    from agent_session_restore.storage import SessionStorage
+
+    registry_file = temp_dir / "shared-sessions.json"
+    workers, per_worker = 6, 4
+    barrier = threading.Barrier(workers)
+    errors: list[BaseException] = []
+
+    def work(worker: int) -> None:
+        try:
+            reg = SessionRegistry(storage=SessionStorage(registry_file))
+            barrier.wait()
+            for i in range(per_worker):
+                reg.register(
+                    session_id=f"w{worker}-s{i}",
+                    name=f"n{worker}-{i}",
+                    cwd=str(temp_dir),
+                    git_branch="main",
+                )
+        except BaseException as exc:  # noqa: BLE001 - surfaced by the assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work, args=(w,)) for w in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    stored = SessionRegistry(storage=SessionStorage(registry_file)).list_sessions(active_only=False)
+    assert len(stored) == workers * per_worker

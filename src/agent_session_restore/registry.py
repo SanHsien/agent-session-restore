@@ -105,6 +105,12 @@ class SessionRegistry:
                 entry.notes = notes
             if custom_resume_cmd is not None:
                 entry.custom_resume_cmd = custom_resume_cmd
+            # Re-run the construction-time normalization/validation (cwd
+            # characters, control characters in name, agent). Without it an
+            # update could persist a value that load() later rejects, which
+            # silently drops the whole entry. A ValueError here aborts before
+            # anything is saved.
+            entry.__post_init__()
         else:
             entry = SessionEntry(
                 session_id=session_id,

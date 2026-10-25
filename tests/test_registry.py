@@ -128,3 +128,27 @@ def test_concurrent_registers_do_not_lose_updates(temp_dir):
     assert errors == []
     stored = SessionRegistry(storage=SessionStorage(registry_file)).list_sessions(active_only=False)
     assert len(stored) == workers * per_worker
+
+
+def test_registry_update_rejects_invalid_cwd_instead_of_corrupting_the_entry(registry, temp_dir):
+    # Creating an entry validates cwd, but the update branch of register() used
+    # to store whatever it was given. The bad value was saved, and the next
+    # load() silently dropped the whole entry because it failed validation.
+    import pytest
+
+    registry.register(session_id="sess-upd", name="keep-me", cwd=str(temp_dir))
+
+    with pytest.raises(ValueError):
+        registry.register(session_id="sess-upd", cwd=str(temp_dir) + '_bad"dir')
+
+    survivor = registry.get("sess-upd")
+    assert survivor is not None
+    assert survivor.cwd == str(temp_dir.resolve())
+
+
+def test_registry_update_strips_control_characters_from_name(registry, temp_dir):
+    registry.register(session_id="sess-upd2", name="first", cwd=str(temp_dir))
+    updated = registry.register(session_id="sess-upd2", name="line1\nline2\x07")
+    assert updated.name == "line1line2"
+    reloaded = registry.get("sess-upd2")
+    assert reloaded is not None and reloaded.name == "line1line2"

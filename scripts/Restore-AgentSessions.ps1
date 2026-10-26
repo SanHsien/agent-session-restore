@@ -78,6 +78,35 @@ function ConvertTo-CmdSafe {
     return $result
 }
 
+function ConvertTo-WinArg {
+    # Quote one value as a single Windows command-line argument (the rules
+    # CommandLineToArgvW / MSVCRT parse: wrap in double quotes when the value
+    # has whitespace or quotes, backslash-escape embedded quotes and the
+    # backslashes that precede them). Start-Process -ArgumentList does NOT do
+    # this for array elements; it joins them with bare spaces, so a title or
+    # directory containing a space would be split into several arguments.
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    if ($Value -ne '' -and $Value -notmatch '[\s"]') { return $Value }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    $backslashes = 0
+    foreach ($ch in $Value.ToCharArray()) {
+        if ($ch -eq [char]92) {
+            $backslashes++
+        } elseif ($ch -eq [char]34) {
+            [void]$sb.Append([string]::new([char]92, $backslashes * 2 + 1)).Append('"')
+            $backslashes = 0
+        } else {
+            if ($backslashes -gt 0) { [void]$sb.Append([string]::new([char]92, $backslashes)) }
+            $backslashes = 0
+            [void]$sb.Append($ch)
+        }
+    }
+    if ($backslashes -gt 0) { [void]$sb.Append([string]::new([char]92, $backslashes * 2)) }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
 function Get-AgentResumeCommand {
     # Build the resume command as a string, quoting id/cwd/name for the
     # given shell dialect. The custom_resume_cmd template text itself
@@ -217,11 +246,14 @@ foreach ($s in $sessions) {
             # Windows Terminal new tab. -d/--title are separate argv elements
             # to wt.exe itself (no shell re-parsing); $agentCmdPs is the text
             # the started pwsh -Command will run, already PS-literal quoted.
-            Start-Process wt.exe -ArgumentList "-w", "0", "new-tab", "-d", $cwd, "--title", $displayTitle, $shellCmd, "-NoExit", "-Command", $agentCmdPs
+            $wtArgs = @("-w", "0", "new-tab", "-d", $cwd, "--title", $displayTitle, $shellCmd, "-NoExit", "-Command", $agentCmdPs) |
+                ForEach-Object { ConvertTo-WinArg $_ }
+            Start-Process wt.exe -ArgumentList ($wtArgs -join ' ')
         } elseif ($Terminal -eq 'pwsh' -or $Terminal -eq 'powershell') {
             # Standalone PowerShell window.
             $titleAssignment = "`$host.UI.RawUI.WindowTitle = " + (ConvertTo-PSLiteral $displayTitle) + "; " + $agentCmdPs
-            Start-Process $shellCmd -WorkingDirectory $cwd -ArgumentList "-NoExit", "-Command", $titleAssignment
+            $psArgs = @("-NoExit", "-Command", $titleAssignment) | ForEach-Object { ConvertTo-WinArg $_ }
+            Start-Process $shellCmd -WorkingDirectory $cwd -ArgumentList ($psArgs -join ' ')
         } elseif ($Terminal -eq 'cmd') {
             # Standalone Command Prompt. cmd.exe re-parses everything after
             # /k with its own metacharacter rules, so title and the resume

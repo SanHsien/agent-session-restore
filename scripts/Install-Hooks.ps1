@@ -39,7 +39,7 @@ if (Test-Path $SettingsPath) {
     }
 }
 
-if (-not $settings.ContainsKey("hooks")) {
+if (-not $settings.Contains("hooks")) {
     $settings["hooks"] = [ordered]@{}
 }
 

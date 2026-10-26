@@ -93,3 +93,35 @@ def test_install_hooks_script_writes_a_valid_config_and_replaces_old_entries(tmp
     assert "other-tool" in commands
     assert sum("session-start.py" in c for c in commands) == 1
     assert "C:/old/hooks" not in " ".join(commands)
+
+
+def _run_install_script(settings: Path) -> subprocess.CompletedProcess[str]:
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+    return subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-File",
+         str(REPO_ROOT / "scripts" / "Install-Hooks.ps1"), "-SettingsPath", str(settings)],
+        capture_output=True, text=True, timeout=120, creationflags=flags,
+    )
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell 7 not available")
+def test_install_hooks_script_works_when_settings_json_does_not_exist(tmp_path):
+    # A fresh machine has no settings.json: the script starts from an ordered
+    # dictionary, which has no ContainsKey() (only Contains()), and crashed.
+    settings = tmp_path / "newdir" / "settings.json"
+
+    proc = _run_install_script(settings)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    _assert_valid_hooks_config(json.loads(settings.read_text("utf-8-sig")))
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell 7 not available")
+def test_install_hooks_script_starts_fresh_when_settings_json_is_unparsable(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text("{ this is not json", encoding="utf-8")
+
+    proc = _run_install_script(settings)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    _assert_valid_hooks_config(json.loads(settings.read_text("utf-8-sig")))

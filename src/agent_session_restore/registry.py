@@ -244,8 +244,9 @@ class SessionRegistry:
             branch = s.git_branch or "-"
             short_id = s.session_id[:12]
             agent_badge = f"`{s.agent.upper()}`"
+            name_cell = s.name.replace("`", "'").replace("|", "\\|")
             lines.append(
-                f"| {agent_badge} | `{s.name}` | `{short_id}` | {status_icon} {s.status} | `{branch}` | `{s.cwd}` | {s.updated_at} |"
+                f"| {agent_badge} | `{name_cell}` | `{short_id}` | {status_icon} {s.status} | `{branch}` | `{s.cwd}` | {s.updated_at} |"
             )
         lines.append("")
         return "\n".join(lines)

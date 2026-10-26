@@ -152,3 +152,15 @@ def test_registry_update_strips_control_characters_from_name(registry, temp_dir)
     assert updated.name == "line1line2"
     reloaded = registry.get("sess-upd2")
     assert reloaded is not None and reloaded.name == "line1line2"
+
+
+def test_registry_export_markdown_name_cannot_break_the_table(registry, temp_dir):
+    # name is free-form text. A `|` splits the cell and a backtick ends the
+    # code span, so the row grew extra columns / unbalanced formatting.
+    registry.register(session_id="sess-md", name="fix a|b `c`", cwd=str(temp_dir))
+    row = [ln for ln in registry.export_markdown().splitlines() if "sess-md" in ln][0]
+
+    header_cells = 7
+    unescaped_pipes = row.replace("\\|", "").count("|")
+    assert unescaped_pipes == header_cells + 1
+    assert row.count("`") % 2 == 0

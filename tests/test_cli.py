@@ -180,3 +180,24 @@ def test_cli_hook_output_is_ascii_so_the_console_code_page_cannot_garble_it(
     assert ret == 0
     assert out.isascii()
     assert "專案" in json.loads(out)["systemMessage"]
+
+
+def test_cli_export_does_not_crash_when_stdout_cannot_encode_the_output(
+    temp_registry_file, temp_dir, monkeypatch
+):
+    # The Markdown export contains emoji status icons. With stdout redirected
+    # to a file/pipe on a cp950 system, print() raised UnicodeEncodeError and
+    # `csr export > sessions.md` produced nothing.
+    import io
+    import sys
+
+    main(["--file", str(temp_registry_file), "register", "--id", "enc-sess",
+          "--name", "emoji-test", "--cwd", str(temp_dir), "--branch", "main"])
+    sink = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(sink, encoding="cp950"))
+
+    ret = main(["--file", str(temp_registry_file), "export"])
+
+    sys.stdout.flush()
+    assert ret == 0
+    assert b"emoji-test" in sink.getvalue()

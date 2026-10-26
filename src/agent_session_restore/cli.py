@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Callable
@@ -316,7 +317,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _make_streams_tolerant() -> None:
+    """Never crash on output the stream's encoding cannot represent.
+
+    When stdout/stderr are redirected on Windows they use the ANSI code page
+    (cp950, cp1252, ...), and printing the emoji in `export` or a non-ASCII
+    name raised UnicodeEncodeError. Substitute instead of failing.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(OSError, ValueError):
+                reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _make_streams_tolerant()
     parser = build_parser()
     args = parser.parse_args(argv)
 

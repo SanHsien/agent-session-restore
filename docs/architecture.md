@@ -48,7 +48,7 @@ hooks/session-start.py
     |  將 src/ 加進 sys.path，import agent_session_restore.hooks
     v
 agent_session_restore.hooks.handle_session_start()
-    |  parse_hook_payload(): 讀 stdin JSON，失敗則退回環境變數
+    |  parse_hook_payload(): 以 UTF-8 讀 stdin JSON（不用本機碼頁），失敗則退回環境變數
     |  (CLAUDE_SESSION_ID / CLAUDE_SESSION_NAME / CLAUDE_PROJECT_DIR)
     v
 agent_session_restore.registry.SessionRegistry.register(agent="claude", ...)
@@ -148,5 +148,7 @@ save()
   寫進 .{filename}.tmp-{pid}-{uuid} 暫存檔 -> os.replace() 原子替換正式檔
   （即使十幾個 SessionStart 同時觸發，也不會出現半寫入的殘缺 JSON）
 ```
+
+`register()`／`unregister()`／`prune()` 都包在 `SessionStorage.transaction()` 內：鎖在整個「讀取 -> 修改 -> 儲存」期間持續持有（鎖可重入），否則兩個同時啟動的 Hook 會讀到同一份快照，後存的那份覆蓋掉先存的項目。`load()` 遇到 I/O 錯誤（如權限被占用）會直接拋出，只有內容損毀（JSON／編碼／結構錯誤）才備份成 `*.corrupt.*.json` 並重建。
 
 `[tool.mypy]` 設定 `platform = "win32"`：因為 `msvcrt`／`fcntl` 兩個模組的 typeshed 型別樁是依平台切換的，固定成 win32 讓 CI 在 Windows 與 Linux runner 上得到一致的型別檢查結果（詳見專案根目錄 `REVIEW.md`）。

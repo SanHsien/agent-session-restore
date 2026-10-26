@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -202,6 +203,25 @@ def cmd_install_hooks(args: argparse.Namespace, registry: SessionRegistry | None
     return 0
 
 
+def _run_hook(
+    handler: Callable[..., dict[str, Any]], registry: SessionRegistry
+) -> int:
+    """Run a hook handler so that it can never fail the Claude Code event.
+
+    Like hooks/session-start.py and hooks/session-end.py, a handler error is
+    reported on stderr and the process still exits 0. The JSON is ASCII-only
+    (escapes) because stdout is encoded with the console code page, which
+    could garble or reject non-ASCII text.
+    """
+    try:
+        result = handler(registry=registry)
+    except Exception as exc:
+        sys.stderr.write(f"[agent-session-restore] hook error: {exc}\n")
+        result = {"systemMessage": ""}
+    print(json.dumps(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="asr",
@@ -308,14 +328,10 @@ def main(argv: list[str] | None = None) -> int:
         registry = SessionRegistry(storage=SessionStorage(custom_file))
 
     if args.subcommand == "hook-start":
-        res = handle_session_start(registry=registry)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0
+        return _run_hook(handle_session_start, registry)
 
     if args.subcommand == "hook-end":
-        res = handle_session_end(registry=registry)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0
+        return _run_hook(handle_session_end, registry)
 
     handlers = {
         "list": cmd_list,

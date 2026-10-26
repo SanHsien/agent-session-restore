@@ -124,3 +124,59 @@ def test_cli_install_hooks(capsys):
     assert "SessionStart" in out
     assert "SessionEnd" in out
 
+
+
+def _feed_stdin(monkeypatch, payload):
+    import io
+    import sys
+
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8"))
+
+
+def test_cli_hook_start_never_raises_on_invalid_payload(
+    temp_registry_file, temp_dir, monkeypatch, capsys
+):
+    # `csr hook-start` is wired straight into Claude Code's SessionStart. A
+    # session id with a space fails validation; that used to escape main() as a
+    # traceback and a non-zero exit, unlike hooks/session-start.py which is
+    # documented to always exit 0.
+    _feed_stdin(monkeypatch, {"session_id": "bad id", "cwd": str(temp_dir)})
+
+    ret = main(["--file", str(temp_registry_file), "hook-start"])
+
+    assert ret == 0
+    assert "systemMessage" in json.loads(capsys.readouterr().out)
+
+
+def test_cli_hook_end_never_raises_on_unusable_registry(
+    temp_registry_file, monkeypatch, capsys
+):
+    from pathlib import Path
+    from unittest.mock import patch
+
+    temp_registry_file.write_text("{}", encoding="utf-8")
+    _feed_stdin(monkeypatch, {"session_id": "some-session"})
+
+    with patch.object(Path, "read_text", side_effect=PermissionError("locked")):
+        ret = main(["--file", str(temp_registry_file), "hook-end"])
+
+    assert ret == 0
+    assert "systemMessage" in json.loads(capsys.readouterr().out)
+
+
+def test_cli_hook_output_is_ascii_so_the_console_code_page_cannot_garble_it(
+    temp_registry_file, temp_dir, monkeypatch, capsys
+):
+    # Hook stdout is encoded with the console code page (cp950 would garble or
+    # reject non-ASCII text). JSON escapes keep it lossless and always encodable.
+    _feed_stdin(
+        monkeypatch, {"session_id": "ascii-sess", "name": "專案", "cwd": str(temp_dir)}
+    )
+
+    ret = main(["--file", str(temp_registry_file), "hook-start"])
+
+    out = capsys.readouterr().out
+    assert ret == 0
+    assert out.isascii()
+    assert "專案" in json.loads(out)["systemMessage"]

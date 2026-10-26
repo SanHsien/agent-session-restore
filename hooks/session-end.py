@@ -19,10 +19,17 @@ try:
     from agent_session_restore.hooks import handle_session_end
 
     result = handle_session_end()
-    print(json.dumps(result, ensure_ascii=False))
+    # ASCII-only JSON: stdout uses the console code page, which could garble
+    # or reject non-ASCII text; JSON escapes are lossless and always encodable.
+    print(json.dumps(result))
 except Exception as e:
-    with open(Path.home() / ".claude" / "session-restore-hook.log", "a", encoding="utf-8") as f:
-        f.write(f"SessionEnd error: {e}\n")
+    try:
+        log_path = Path.home() / ".claude" / "session-restore-hook.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"SessionEnd error: {e}\n")
+    except Exception:
+        pass  # logging must never turn a handled error into a failing hook
     print(json.dumps({"systemMessage": ""}))
 
 sys.exit(0)

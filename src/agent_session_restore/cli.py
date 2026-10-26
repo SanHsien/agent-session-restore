@@ -186,13 +186,13 @@ def cmd_install_hooks(args: argparse.Namespace, registry: SessionRegistry | None
             "SessionStart": [
                 {
                     "matcher": "startup|clear|resume",
-                    "command": f'python "{start_hook}"',
+                    "hooks": [{"type": "command", "command": f'python "{start_hook}"'}],
                 }
             ],
             "SessionEnd": [
                 {
                     "matcher": ".*",
-                    "command": f'python "{end_hook}"',
+                    "hooks": [{"type": "command", "command": f'python "{end_hook}"'}],
                 }
             ],
         }

@@ -130,13 +130,23 @@ pwsh ./scripts/Install-Hooks.ps1
     "SessionStart": [
       {
         "matcher": "startup|clear|resume",
-        "command": "python \"C:/path/to/agent-session-restore/hooks/session-start.py\""
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/path/to/agent-session-restore/hooks/session-start.py\""
+          }
+        ]
       }
     ],
     "SessionEnd": [
       {
         "matcher": ".*",
-        "command": "python \"C:/path/to/agent-session-restore/hooks/session-end.py\""
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/path/to/agent-session-restore/hooks/session-end.py\""
+          }
+        ]
       }
     ]
   }

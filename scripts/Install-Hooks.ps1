@@ -46,30 +46,44 @@ if (-not $settings.ContainsKey("hooks")) {
 $startHookCmd = "python `"$startHook`""
 $endHookCmd = "python `"$endHook`""
 
-# Register SessionStart hook
-$startHooksList = @()
-if ($settings["hooks"].ContainsKey("SessionStart")) {
-    $existing = @($settings["hooks"]["SessionStart"])
-    # Filter out previous instances of this hook
-    $startHooksList = $existing | Where-Object { $_.command -notlike "*session-start.py*" }
+# Claude Code expects each event to hold matcher groups that contain a nested
+# "hooks" list: { matcher, hooks = [ { type = "command"; command = "..." } ] }.
+# A group is "ours" if any of its handlers (or the flat { command = ... } shape
+# an earlier version of this script wrote) runs the given hook script.
+function Test-GroupRunsScript {
+    param($Group, [string]$ScriptPattern)
+    if ($Group -isnot [System.Collections.IDictionary]) { return $false }
+    if ($Group.Contains("command") -and $Group["command"] -like $ScriptPattern) { return $true }
+    if ($Group.Contains("hooks")) {
+        foreach ($handler in @($Group["hooks"])) {
+            if ($handler -is [System.Collections.IDictionary] -and $handler.Contains("command") -and $handler["command"] -like $ScriptPattern) {
+                return $true
+            }
+        }
+    }
+    return $false
 }
-$startHooksList += @{
-    matcher = "startup|clear|resume"
-    command = $startHookCmd
-}
-$settings["hooks"]["SessionStart"] = $startHooksList
 
-# Register SessionEnd hook
-$endHooksList = @()
-if ($settings["hooks"].ContainsKey("SessionEnd")) {
-    $existing = @($settings["hooks"]["SessionEnd"])
-    $endHooksList = $existing | Where-Object { $_.command -notlike "*session-end.py*" }
+function Merge-HookGroup {
+    param($Settings, [string]$Event, [string]$ScriptPattern, [string]$Matcher, [string]$Command)
+    $kept = @()
+    if ($Settings["hooks"].Contains($Event)) {
+        # Drop previous instances of this hook, keep everything else.
+        foreach ($group in @($Settings["hooks"][$Event])) {
+            if (-not (Test-GroupRunsScript -Group $group -ScriptPattern $ScriptPattern)) { $kept += ,$group }
+        }
+    }
+    $kept += ,([ordered]@{
+        matcher = $Matcher
+        hooks   = @(
+            [ordered]@{ type = "command"; command = $Command }
+        )
+    })
+    $Settings["hooks"][$Event] = $kept
 }
-$endHooksList += @{
-    matcher = ".*"
-    command = $endHookCmd
-}
-$settings["hooks"]["SessionEnd"] = $endHooksList
+
+Merge-HookGroup -Settings $settings -Event "SessionStart" -ScriptPattern "*session-start.py*" -Matcher "startup|clear|resume" -Command $startHookCmd
+Merge-HookGroup -Settings $settings -Event "SessionEnd" -ScriptPattern "*session-end.py*" -Matcher ".*" -Command $endHookCmd
 
 $jsonOut = $settings | ConvertTo-Json -Depth 10
 Set-Content -LiteralPath $SettingsPath -Value $jsonOut -Encoding UTF8

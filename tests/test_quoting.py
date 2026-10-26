@@ -1,5 +1,8 @@
 """Tests for the per-shell quoting helpers."""
 
+import pytest
+from _cmdsim import parse_passes, win_argv
+
 from agent_session_restore.quoting import (
     format_argv_cmd,
     format_argv_powershell,
@@ -73,15 +76,62 @@ def test_quote_cmd_token_does_not_corrupt_a_path_with_spaces_and_parentheses():
     assert quote_cmd_token(path) == '"' + path + '"'
 
 
-def test_quote_cmd_token_still_escapes_percent_inside_quotes():
+def test_quote_cmd_token_does_not_leave_carets_in_a_value_with_a_percent_and_a_space():
+    # A caret inside quotes is not removed, so `C:\My 100% dir` must not become
+    # `"C:\My 100^% dir"`. The percent is moved outside the quotes instead,
+    # where a caret does work and the variable-expansion marker is broken up.
+    value = r"C:\My 100% dir"
+    quoted = quote_cmd_token(value)
+    assert quoted == '"C:\\My 100"^%" dir"'
+    assert win_argv(parse_passes(quoted, 1)[0]) == [value]
+
+
+def test_quote_cmd_token_breaks_up_a_percent_variable_reference_inside_quotes():
     quoted = quote_cmd_token("my %PATH% dir")
-    assert quoted.startswith('"') and quoted.endswith('"')
-    assert "^%" in quoted
+    assert quoted == '"my "^%"PATH"^%" dir"'
+    assert win_argv(parse_passes(quoted, 1)[0]) == ["my %PATH% dir"]
 
 
-def test_quote_cmd_token_with_quote_and_whitespace_escapes_everything():
-    # A literal double quote flips cmd.exe's quote state, so every following
-    # metacharacter must stay caret-escaped (nothing may rely on being quoted).
-    quoted = quote_cmd_token('say "hi" & calc')
-    assert "^&" in quoted
-    assert '^"' in quoted
+NASTY_VALUES = [
+    "plain",
+    "R&D",
+    "a|b<c>d",
+    "x&calc",
+    "50%",
+    "%PATH%",
+    "wow!",
+    "C:\\work\\R&D (x86)",
+    "has space",
+    "has space & calc",
+    "C:\\Program Files (x86)\\app",
+    "my %PATH% dir",
+    'say "hi" & calc',
+    'x" & calc & "',
+    "caret^ & space",
+    'a"b&c',
+    r"ends\with\backslash" + "\\",
+    "C:\\dir with space\\",
+    'quote after backslash \\" here',
+    "",
+]
+
+
+@pytest.mark.parametrize("levels", [1, 2])
+@pytest.mark.parametrize("value", NASTY_VALUES)
+def test_quote_cmd_token_survives_every_cmd_parse_as_one_literal_argument(value, levels):
+    # `levels` = how many times cmd.exe parses the line before the program
+    # sees it. Command syntax must never be live in any parse, and the program
+    # must end up with exactly the original value as a single argument.
+    token = quote_cmd_token(value, levels)
+
+    delivered, live = parse_passes(token, levels)
+
+    assert live == [], f"live cmd syntax {live} in {token!r}"
+    assert win_argv(delivered) == [value]
+
+
+def test_quote_cmd_token_two_levels_escape_unquoted_metacharacters_twice():
+    # `cmd.exe /c start ... cmd /k <line>`: the outer cmd consumes one layer of
+    # carets, the inner cmd parses what is left.
+    assert quote_cmd_token("R&D", levels=1) == "R^&D"
+    assert quote_cmd_token("R&D", levels=2) == "R^^^&D"

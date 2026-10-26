@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from _cmdsim import parse_passes, win_argv
 
 from agent_session_restore.launcher import SessionLauncher
 from agent_session_restore.models import SessionEntry
@@ -140,9 +141,11 @@ def test_malicious_name_is_quoted_not_executed(temp_dir):
     launcher_cmd = SessionLauncher(backend="cmd")
     cmd2 = launcher_cmd.build_resume_command(entry)
     title_token = cmd2[3]
-    # Every cmd.exe metacharacter in the title must have been caret-escaped.
-    assert "^&" in title_token
-    assert '^"' in title_token
+    # The title is parsed once (by the cmd.exe running `start`): no & may be
+    # live, and `start` must get the whole malicious name as one argument.
+    delivered, live = parse_passes(title_token, 1)
+    assert live == []
+    assert win_argv(delivered) == ['CODEX: x" & calc & "']
 
 
 def test_malicious_cwd_characters_neutralized_by_quoting(temp_dir):
@@ -201,3 +204,40 @@ def test_cmd_backend_passes_one_raw_command_line_not_an_argv_list(temp_dir):
     assert isinstance(popen_args, str)
     assert popen_args == " ".join(res.command)
     assert '"CURSOR: plain"' in popen_args
+
+
+def test_cmd_backend_escapes_the_k_part_for_both_cmd_parses(temp_dir):
+    # `cmd.exe /c start "T" /D <cwd> cmd /k <agent command>`: the outer cmd
+    # parses the whole line (and removes one layer of carets), then the cmd
+    # started by `start` parses the /k text again. A cwd like `R&D` has no
+    # space, so it is not quoted; with a single layer (`R^&D`) the outer cmd
+    # turned it into a bare `R&D` and the inner cmd ran `D` as a second command.
+    project = temp_dir / "R&D"
+    entry = SessionEntry(session_id="ok-id-5", name="n", cwd=str(project), agent="cursor")
+    cmd = SessionLauncher(backend="cmd").build_resume_command(entry)
+
+    # `start` consumes the title and /D argument itself: one parse.
+    assert cmd[3] == '"CURSOR: n"'
+    assert cmd[5] == entry.cwd.replace("&", "^&")
+    # The /k text is parsed twice.
+    assert cmd[-1] == "cursor " + entry.cwd.replace("&", "^^^&")
+
+    delivered, live = parse_passes(cmd[-1], 2)
+    assert live == []
+    assert win_argv(delivered) == ["cursor", entry.cwd]
+
+
+def test_cmd_backend_custom_template_values_are_escaped_for_both_parses(temp_dir):
+    entry = SessionEntry(
+        session_id="ok-id-6",
+        name="x&calc",
+        cwd=str(temp_dir),
+        agent="custom",
+        custom_resume_cmd="myagent --name {name}",
+    )
+    cmd = SessionLauncher(backend="cmd").build_resume_command(entry)
+
+    assert cmd[-1] == "myagent --name x^^^&calc"
+    delivered, live = parse_passes(cmd[-1], 2)
+    assert live == []
+    assert win_argv(delivered) == ["myagent", "--name", "x&calc"]

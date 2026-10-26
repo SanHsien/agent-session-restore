@@ -30,31 +30,66 @@ def quote_powershell(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def quote_cmd_token(value: str) -> str:
-    """Escape ``value`` for safe embedding in a cmd.exe command-line string.
+def _caret_escape(text: str, levels: int) -> str:
+    """Caret-escape cmd metacharacters once per cmd.exe parse the text will go through."""
+    for _ in range(levels):
+        text = "".join(("^" + ch) if ch in _CMD_METACHARS else ch for ch in text)
+    return text
 
-    cmd.exe re-parses its entire command line (including text following
-    ``/c``) with its own metacharacter rules, independent of how the host
-    process quoted argv boundaries. Each metacharacter is escaped with a
-    caret so cmd.exe treats it as a literal character rather than as a
-    control operator or variable-expansion marker.
+
+def quote_cmd_token(value: str, levels: int = 1) -> str:
+    """Quote ``value`` as ONE argument inside a cmd.exe command-line string.
+
+    ``levels`` is how many times cmd.exe parses the text before the program
+    sees it. A plain ``cmd /c <line>`` is one parse. ``cmd /c start ... cmd /k
+    <line>`` is two: the outer cmd.exe parses the whole line (consuming one
+    layer of carets), then the cmd.exe that ``start`` launches parses the /k
+    text again, so an unquoted metacharacter must be escaped once per parse
+    (``&`` -> ``^^^&`` for two parses).
+
+    * No whitespace: every metacharacter is caret-escaped (once per level).
+    * Whitespace: the value is wrapped in double quotes, where cmd.exe treats
+      ``& | < > ( ) @ ^`` literally in every parse. A caret inside quotes is
+      NOT removed, so none are added there. The characters that still act
+      inside quotes (``%`` and ``!`` expansion) and the literal double quote
+      are emitted outside the quotes, where a caret does work: the quoted
+      region is closed, the character is caret-escaped and the region is
+      reopened (``a %X% b`` -> ``"a "^%"X"^%" b``; the program still gets one
+      argument).
+    * A literal double quote is passed on as ``\"`` and backslashes in front of
+      a quote are doubled, as the program's own command-line parser expects.
     """
-    needs_quotes = not value or any(c.isspace() for c in value)
+    if not value:
+        return '""'
 
-    if needs_quotes and '"' not in value:
-        # Inside a quoted string cmd.exe treats & | < > ( ) @ ^ literally, and
-        # a caret there is NOT consumed -- it would end up in the value (a path
-        # like "Program Files (x86)" would become "...^(x86^)" and not exist).
-        # Only variable expansion (% and delayed !) still happens in quotes, so
-        # only those are caret-escaped. This is safe only because there is no
-        # embedded quote that could end the quoted region early.
-        escaped = "".join(("^" + ch) if ch in "%!" else ch for ch in value)
-        return f'"{escaped}"'
+    backslashes = 0
+    out: list[str] = []
 
-    escaped = "".join(("^" + ch) if ch in _CMD_METACHARS else ch for ch in value)
-    if needs_quotes:
-        escaped = f'"{escaped}"'
-    return escaped
+    if not any(c.isspace() for c in value):
+        for ch in value:
+            if ch == '"':
+                out.append(_caret_escape("\\" * (backslashes + 1) + '"', levels))
+            else:
+                out.append(_caret_escape(ch, levels))
+            backslashes = backslashes + 1 if ch == "\\" else 0
+        return "".join(out)
+
+    in_quote = False
+    for ch in value:
+        if ch in '"%!':
+            if in_quote:
+                out.append("\\" * backslashes + '"')
+                in_quote = False
+            out.append(_caret_escape('\\"' if ch == '"' else ch, levels))
+        else:
+            if not in_quote:
+                out.append('"')
+                in_quote = True
+            out.append(ch)
+        backslashes = backslashes + 1 if ch == "\\" else 0
+    if in_quote:
+        out.append("\\" * backslashes + '"')
+    return "".join(out)
 
 
 def format_argv_powershell(argv: list[str]) -> str:
@@ -62,6 +97,10 @@ def format_argv_powershell(argv: list[str]) -> str:
     return " ".join(quote_powershell(token) for token in argv)
 
 
-def format_argv_cmd(argv: list[str]) -> str:
-    """Join an argv list into a cmd.exe command string, escaping every token."""
-    return " ".join(quote_cmd_token(token) for token in argv)
+def format_argv_cmd(argv: list[str], levels: int = 1) -> str:
+    """Join an argv list into a cmd.exe command string, escaping every token.
+
+    ``levels`` is the number of cmd.exe parses the string goes through (see
+    :func:`quote_cmd_token`).
+    """
+    return " ".join(quote_cmd_token(token, levels) for token in argv)

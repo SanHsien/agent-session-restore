@@ -161,11 +161,18 @@ class SessionLauncher:
             return [shell_bin, "-NoExit", "-Command", script]
 
         if self.backend == "cmd":
+            # The /k text is parsed by cmd.exe twice: once by the cmd.exe
+            # running `start` (together with the whole line), and again by the
+            # cmd.exe that `start` launches. Unquoted metacharacters therefore
+            # need two layers of escaping here; the title and the /D directory
+            # below are consumed by `start` itself and need only one.
             if argv is not None:
-                agent_cmd_cmd = format_argv_cmd(argv)
+                agent_cmd_cmd = format_argv_cmd(argv, levels=2)
             else:
                 agent_cmd_cmd = _substitute_custom_cmd(
-                    session.custom_resume_cmd or "", session, quote_cmd_token
+                    session.custom_resume_cmd or "",
+                    session,
+                    lambda value: quote_cmd_token(value, levels=2),
                 )
             # cmd.exe re-parses its *entire* command line after /c (including
             # the title and /D directory arguments), independent of how the

@@ -161,6 +161,8 @@ uv run csr register --id codex-task-42 --agent codex --cwd C:\path\to\project --
 uv run csr register --id cursor-session-1 --agent cursor --cwd C:\path\to\project
 ```
 
+`custom_resume_cmd` 在 cmd 後端的語意：樣板會被原樣寫進暫存腳本的括號區塊內，必須是合法的批次行。未引號的 `)` 會破壞區塊並讓暫存檔留下；`%` 依批次規則須寫 `%%`。這是相對舊版內嵌 `/k` 字串的行為變更；`{id}`／`{cwd}`／`{name}` 佔位符的替換值則由程式自動引號處理。
+
 ---
 
 ## 使用方法 (Usage)

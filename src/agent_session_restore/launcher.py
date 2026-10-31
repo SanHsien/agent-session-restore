@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,16 +14,23 @@ from typing import Literal
 
 from agent_session_restore.models import SessionEntry
 from agent_session_restore.quoting import (
-    format_argv_cmd,
+    format_argv_batch,
     format_argv_powershell,
-    quote_cmd_token,
+    quote_batch_text,
+    quote_batch_token,
     quote_powershell,
 )
 
 TerminalBackend = Literal["wt", "pwsh", "powershell", "cmd", "print"]
 
+# Shown in dry-run/print output in place of the temp script path, which only
+# exists once a real launch writes the script.
+CMD_SCRIPT_PLACEHOLDER = "<generated-temp-script>.cmd"
 
-def _substitute_custom_cmd(template: str, session: SessionEntry, quote: Callable[[str], str]) -> str:
+
+def _substitute_custom_cmd(
+    template: str, session: SessionEntry, quote: Callable[[str], str]
+) -> str:
     """Substitute id/session_id/cwd/name placeholders in a custom resume
     command template, quoting each substituted value for the target shell
     dialect. The template text itself (authored by the user) is left
@@ -105,15 +113,18 @@ class SessionLauncher:
         argv = SessionLauncher.build_agent_argv(session) or []
         return " ".join(argv)
 
-    def build_resume_command(self, session: SessionEntry) -> list[str]:
+    def build_resume_command(
+        self, session: SessionEntry, script_path: Path | None = None
+    ) -> list[str]:
         """Construct the launch command list for a specific terminal backend.
 
         Dynamic values (session id, cwd, name) are only ever embedded in a
-        command STRING (the text handed to pwsh -Command or cmd.exe /k)
-        after being quoted with the matching per-shell helper from
+        command STRING (the text handed to pwsh -Command, or a line of the
+        temp .cmd script of the cmd backend) after being quoted with the matching per-shell helper from
         agent_session_restore.quoting. Everywhere else they are passed as
         discrete argv elements, which the OS process-creation API keeps
-        separate from shell re-parsing.
+        separate from shell re-parsing. The cmd backend takes ``script_path``
+        (see write_cmd_script); without it the command shows a placeholder.
         """
         cwd = session.cwd
         agent_tag = session.agent.upper()
@@ -161,36 +172,64 @@ class SessionLauncher:
             return [shell_bin, "-NoExit", "-Command", script]
 
         if self.backend == "cmd":
-            # The /k text is parsed by cmd.exe twice: once by the cmd.exe
-            # running `start` (together with the whole line), and again by the
-            # cmd.exe that `start` launches. Unquoted metacharacters therefore
-            # need two layers of escaping here; the title and the /D directory
-            # below are consumed by `start` itself and need only one.
-            if argv is not None:
-                agent_cmd_cmd = format_argv_cmd(argv, levels=2)
-            else:
-                agent_cmd_cmd = _substitute_custom_cmd(
-                    session.custom_resume_cmd or "",
-                    session,
-                    lambda value: quote_cmd_token(value, levels=2),
-                )
-            # cmd.exe re-parses its *entire* command line after /c (including
-            # the title and /D directory arguments), independent of how the
-            # argv list was quoted for CreateProcess, so title and cwd are
-            # also escaped with the cmd-specific helper here, not left raw.
-            return [
-                "cmd.exe",
-                "/c",
-                "start",
-                quote_cmd_token(display_title),
-                "/D",
-                quote_cmd_token(cwd),
-                "cmd",
-                "/k",
-                agent_cmd_cmd,
-            ]
+            # No session value (id, cwd, name, custom command) goes into this
+            # command line: they are all written to a temp .cmd script by
+            # build_cmd_script, so cmd.exe never re-parses them as part of
+            # /c or /k text. Only the script path, which this tool generates,
+            # appears, wrapped in plain double quotes behind `call`: `cmd /k`
+            # strips the outer quotes of a line that has several quoted
+            # parts, so a TEMP path with a space plus `&`, `%` or `!` would
+            # break; after `call` the quoted path is a single token.
+            target = f'"{script_path}"' if script_path is not None else CMD_SCRIPT_PLACEHOLDER
+            # The title must be quoted: an unquoted first token would be run by
+            # `start` as a program (and, with cwd = the session directory, could
+            # pick up an asr.cmd planted there).
+            return ["cmd.exe", "/c", "start", '"asr"', "cmd", "/k", "call", target]
 
         return self.get_agent_cli_command(session).split()
+
+    @staticmethod
+    def build_cmd_script(session: SessionEntry) -> str:
+        """Return the text of the temp .cmd script the cmd backend runs.
+
+        The whole body is one parenthesized block, which cmd.exe reads in full
+        before running anything: its first action deletes the script file, and
+        `(goto) 2>nul` ends the batch context silently at the end, leaving the
+        interactive prompt (`cmd /k`) open. Values are quoted for one batch
+        parse (see quoting.quote_batch_token); chcp 65001 lets cmd read the
+        UTF-8 file, so non-ASCII names and paths survive.
+        """
+        argv = SessionLauncher.build_agent_argv(session)
+        if argv is not None:
+            agent_line = format_argv_batch(argv)
+        else:
+            agent_line = _substitute_custom_cmd(
+                session.custom_resume_cmd or "", session, quote_batch_token
+            )
+        title = quote_batch_text(f"{session.agent.upper()}: {session.name}")
+        lines = [
+            "@echo off",
+            "chcp 65001 >nul",
+            "(",
+            'del "%~f0" >nul 2>&1',
+            f"title {title}",
+            f"cd /d {quote_batch_token(session.cwd)}",
+            agent_line,
+            "(goto) 2>nul",
+            ")",
+        ]
+        return "\r\n".join(lines) + "\r\n"
+
+    def write_cmd_script(self, session: SessionEntry) -> Path:
+        """Write the cmd backend's temp script; the script deletes itself on start."""
+        fd, name = tempfile.mkstemp(prefix="asr-", suffix=".cmd")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(self.build_cmd_script(session).encode("utf-8"))
+        except BaseException:
+            Path(name).unlink(missing_ok=True)
+            raise
+        return Path(name)
 
     def launch_session(self, session: SessionEntry) -> LaunchResult:
         """Launch a single session."""
@@ -202,9 +241,13 @@ class SessionLauncher:
                 error_message=f"Directory does not exist: {session.cwd}",
             )
 
-        cmd = self.build_resume_command(session)
-
+        script_path: Path | None = None
+        cmd: list[str] = []
         try:
+            if self.backend == "cmd":
+                script_path = self.write_cmd_script(session)
+            cmd = self.build_resume_command(session, script_path)
+
             if self.backend == "print":
                 return LaunchResult(session=session, success=True, command=cmd)
 
@@ -214,13 +257,13 @@ class SessionLauncher:
 
             # shell=False always: cmd is a fully-formed argv list, and any
             # dynamic value embedded in a command STRING within it (for the
-            # pwsh/cmd backends) has already been quoted for that shell by
+            # pwsh backend) has already been quoted for that shell by
             # build_resume_command. Setting shell=True here would additionally
             # re-parse the whole argv list through cmd.exe/COMSPEC, which is
             # exactly the double-parsing hazard this design avoids.
             # The cmd backend is a single command line that cmd.exe re-parses;
-            # it is already quoted for cmd by quote_cmd_token. Passing it as a
-            # list would make Python's list2cmdline quote it a second time
+            # its only dynamic part is the double-quoted script path after
+            # `call`. Passing it as a list would make Python's list2cmdline quote it a second time
             # (backslash-escaping the inner quotes), which cmd.exe misreads.
             popen_args: str | list[str] = " ".join(cmd) if self.backend == "cmd" else cmd
             subprocess.Popen(
@@ -230,6 +273,8 @@ class SessionLauncher:
             )
             return LaunchResult(session=session, success=True, command=cmd)
         except Exception as e:
+            if script_path is not None:
+                script_path.unlink(missing_ok=True)
             return LaunchResult(session=session, success=False, command=cmd, error_message=str(e))
 
     def launch_many(

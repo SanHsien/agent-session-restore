@@ -4,8 +4,11 @@ import pytest
 from _cmdsim import parse_passes, win_argv
 
 from agent_session_restore.quoting import (
+    format_argv_batch,
     format_argv_cmd,
     format_argv_powershell,
+    quote_batch_text,
+    quote_batch_token,
     quote_cmd_token,
     quote_powershell,
 )
@@ -135,3 +138,31 @@ def test_quote_cmd_token_two_levels_escape_unquoted_metacharacters_twice():
     # carets, the inner cmd parses what is left.
     assert quote_cmd_token("R&D", levels=1) == "R^&D"
     assert quote_cmd_token("R&D", levels=2) == "R^^^&D"
+
+
+def test_quote_batch_token_leaves_plain_tokens_alone():
+    assert format_argv_batch(["claude", "-r", "abc-123", "C:/proj"]) == "claude -r abc-123 C:/proj"
+
+
+def test_quote_batch_token_doubles_percent_because_batch_expands_it_first():
+    # A caret cannot stop %VAR% expansion in a script file; only %% does.
+    assert quote_batch_token("%PATH%") == '"%%PATH%%"'
+
+
+def test_quote_batch_token_keeps_one_argument_with_no_live_syntax():
+    value = 'a & b | c ^ d ! "q" ' + chr(92) + " (e)"
+    delivered, live = parse_passes(quote_batch_token(value), 1)
+    assert live == []
+    assert win_argv(delivered.replace("%%", "%")) == [value]
+
+
+def test_quote_batch_token_empty_value_is_one_empty_argument():
+    assert win_argv(quote_batch_token("")) == [""]
+
+
+def test_quote_batch_text_escapes_metacharacters_and_percent():
+    text = quote_batch_text('x" & calc | 100%')
+    assert text == 'x^" ^& calc ^| 100%%'
+    delivered, live = parse_passes(text, 1)
+    assert live == []
+    assert delivered == 'x" & calc | 100%%'

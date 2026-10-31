@@ -11,6 +11,8 @@ shell re-parsing involved.
 
 from __future__ import annotations
 
+import re
+
 # Characters cmd.exe treats specially, even inside a quoted argument, because
 # cmd.exe re-parses the whole command line itself after `/c`. Preceding one of
 # these with `^` neutralizes it. This list follows the commonly documented
@@ -104,3 +106,58 @@ def format_argv_cmd(argv: list[str], levels: int = 1) -> str:
     :func:`quote_cmd_token`).
     """
     return " ".join(quote_cmd_token(token, levels) for token in argv)
+
+
+_BATCH_PLAIN = re.compile(r"[\w.:\/-]+")
+
+
+def quote_batch_token(value: str) -> str:
+    r"""Quote ``value`` as ONE argument on a line of a ``.cmd`` script file.
+
+    A script line is parsed by cmd.exe exactly once (there is no outer ``/c``
+    line), but batch files expand ``%`` before anything else, so a literal
+    percent sign must be doubled (``%%``); a caret cannot protect it. The rest
+    follows :func:`quote_cmd_token` with one level: the value is wrapped in
+    double quotes (where ``& | < > ( ) @ ^`` are literal) and a literal ``"``
+    or ``!`` is emitted outside the quotes behind a caret. A value made only
+    of word characters and ``. : / -`` is returned unchanged.
+    """
+    if not value:
+        return '""'
+    if _BATCH_PLAIN.fullmatch(value):
+        return value
+
+    backslashes = 0
+    in_quote = False
+    out: list[str] = []
+    for ch in value:
+        if ch in '"!':
+            if in_quote:
+                out.append("\\" * backslashes + '"')
+                in_quote = False
+            out.append('\\^"' if ch == '"' else "^!")
+        else:
+            if not in_quote:
+                out.append('"')
+                in_quote = True
+            out.append("%%" if ch == "%" else ch)
+        backslashes = backslashes + 1 if ch == "\\" else 0
+    if in_quote:
+        out.append("\\" * backslashes + '"')
+    return "".join(out)
+
+
+def quote_batch_text(value: str) -> str:
+    """Escape ``value`` as bare (unquoted) text on a ``.cmd`` script line.
+
+    For commands such as ``title`` that take the rest of the line literally:
+    ``%`` is doubled and every other cmd metacharacter is caret-escaped.
+    """
+    return "".join(
+        "%%" if ch == "%" else ("^" + ch if ch in _CMD_METACHARS else ch) for ch in value
+    )
+
+
+def format_argv_batch(argv: list[str]) -> str:
+    """Join an argv list into one ``.cmd`` script line, quoting every token."""
+    return " ".join(quote_batch_token(token) for token in argv)

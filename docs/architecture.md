@@ -114,15 +114,19 @@ agent_session_restore.launcher.SessionLauncher.build_resume_command(session)
          - wt / pwsh / powershell 後端：用 quoting.format_argv_powershell()
            或 quoting.quote_powershell() 把上面的 argv／cwd／title 轉成
            單引號 PowerShell 字面值，交給 `pwsh -Command <script>`。
-         - cmd 後端：用 quoting.format_argv_cmd() 或 quoting.quote_cmd_token()
-           把同樣的值轉成 cmd.exe 安全格式，交給 `cmd /k <command>`。
+         - cmd 後端：session 的值（id／cwd／name／自訂樣板）一律不放進命令列，
+           而是由 write_cmd_script() 寫成暫存 `asr-*.cmd` 腳本檔
+           （quoting.quote_batch_token()／quote_batch_text()，只過一次批次解析，
+           `%` 以 `%%` 表示），命令列只剩 `cmd.exe /c start "asr" cmd /k call "<腳本路徑>"`（`"asr"` 必須帶引號，否則 `start` 會把它當程式執行；`call` 讓帶引號的路徑成為單一 token，TEMP 路徑含空白與 `&`、`%`、`!` 時 `cmd /k` 不會誤剝外層引號）。
     |
     v
 subprocess.Popen(argv, shell=False)  # 一律不經過額外 shell 轉譯
       -> wt.exe 開新分頁 / pwsh 或 powershell 獨立視窗 / cmd 獨立視窗
 ```
 
-`scripts/Restore-AgentSessions.ps1` 是同一套邏輯的 PowerShell 版本（不需要 Python/uv 環境即可執行），內含對應的 `ConvertTo-PSLiteral` 與 `ConvertTo-CmdSafe` 兩個函式，行為對齊 `quoting.py` 的 `quote_powershell()`／`quote_cmd_token()`。
+cmd 後端的暫存腳本結構：整個主體包在一個括號區塊裡（cmd 先整塊讀入才執行），第一個動作是刪除腳本自身，因此不留檔；結尾的 `(goto) 2>nul` 讓批次安靜結束，`/k` 的互動提示字元保留。檔案以 UTF-8 寫入並由 `chcp 65001` 開頭，非 ASCII 的名稱與路徑可保留。`--dry-run` 只顯示 `<generated-temp-script>.cmd` 佔位符，不寫檔。
+
+`scripts/Restore-AgentSessions.ps1` 是同一套邏輯的 PowerShell 版本（不需要 Python/uv 環境即可執行），內含對應的 `ConvertTo-PSLiteral` 與 `ConvertTo-CmdSafe` 兩個函式，行為對齊 `quoting.py` 的 `quote_powershell()`／`quote_cmd_token()`。其 cmd 模式仍是內嵌 `/k` 字串，尚未改為暫存腳本。
 
 ## 6. 輸入驗證與命令組裝安全性
 
@@ -131,7 +135,7 @@ subprocess.Popen(argv, shell=False)  # 一律不經過額外 shell 轉譯
 - `session_id`：必須符合 `^[A-Za-z0-9_.:-]{1,128}$`，不符合直接丟出 `ValueError`（拒絕而非轉義，因為 session id 沒有合理理由包含空白或 shell 特殊字元）。
 - `cwd`：`Path(cwd).resolve()` 正規化後，檢查不含 `< > " | ? *` 與 ASCII 控制字元；刻意不要求目錄「必須存在」，因為 `csr prune --missing-dirs` 與 launcher 本身的「目錄不存在」判斷都需要能先讀到已登錄但目錄已被刪除的 entry。
 - `name`：只過濾 ASCII 控制字元，其餘字元一律保留 —— 因為 name 是自由格式的顯示文字，真正的安全邊界在 `launcher.py`／`Restore-AgentSessions.ps1` 組出命令字串時一定會用對應 shell 的引號函式包起來，而不是在輸入端強制拒絕標點符號。
-- `custom_resume_cmd`：刻意維持任意字串（視為受信任輸入，通常由使用者自己在自己的機器上填寫），只有被替換進去的 `{id}`／`{cwd}`／`{name}` 片段會經過引號處理，樣板本身的語法不受任何限制。
+- `custom_resume_cmd`：刻意維持任意字串（視為受信任輸入，通常由使用者自己在自己的機器上填寫），只有被替換進去的 `{id}`／`{cwd}`／`{name}` 片段會經過引號處理，樣板本身的語法不受任何限制。cmd 後端例外的是容器：樣板被原樣寫進暫存腳本的括號區塊，必須是合法的批次行 —— 未引號的 `)` 會破壞區塊並讓暫存檔留下，`%` 依批次規則須寫 `%%`（相對舊版內嵌 `/k` 字串的行為變更）。
 
 ## 7. 併發安全的檔案鎖定 (FileLock)
 

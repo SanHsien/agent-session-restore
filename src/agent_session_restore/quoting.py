@@ -21,15 +21,23 @@ import re
 _CMD_METACHARS = set('^&|<>()@!%"')
 
 
+# PowerShell's tokenizer accepts the ASCII apostrophe and the typographic
+# quotes U+2018, U+2019, U+201A and U+201B as single-quote characters, both to
+# open/close a literal and (doubled) inside one.
+_PS_SINGLE_QUOTES = re.compile("['\u2018\u2019\u201a\u201b]")
+
+
 def quote_powershell(value: str) -> str:
     """Wrap ``value`` in a single-quoted PowerShell literal.
 
     PowerShell single-quoted strings are fully literal: `$`, backtick,
     `;`, `"`, `&`, `|`, `%%` etc. all lose any special meaning inside them.
-    The only character that needs escaping is the single quote itself,
-    which PowerShell doubles (`''`) to represent a literal `'`.
+    The only characters that need escaping are the single-quote characters
+    themselves -- the ASCII ``'`` and the typographic U+2018, U+2019, U+201A
+    and U+201B, which PowerShell treats the same way -- each of which is
+    doubled to represent itself.
     """
-    return "'" + value.replace("'", "''") + "'"
+    return "'" + _PS_SINGLE_QUOTES.sub(lambda m: m.group(0) * 2, value) + "'"
 
 
 def _caret_escape(text: str, levels: int) -> str:
@@ -95,8 +103,13 @@ def quote_cmd_token(value: str, levels: int = 1) -> str:
 
 
 def format_argv_powershell(argv: list[str]) -> str:
-    """Join an argv list into a PowerShell command string, quoting every token."""
-    return " ".join(quote_powershell(token) for token in argv)
+    """Join an argv list into a PowerShell command string, quoting every token.
+
+    The line starts with the call operator ``&``: a quoted string at the start
+    of a statement is an expression, not a command name, so ``'claude' '-r'``
+    is a parse error while ``& 'claude' '-r'`` runs the program.
+    """
+    return "& " + " ".join(quote_powershell(token) for token in argv)
 
 
 def format_argv_cmd(argv: list[str], levels: int = 1) -> str:

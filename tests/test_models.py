@@ -79,3 +79,20 @@ def test_session_registry_data_dict_roundtrip(sample_entry):
     assert loaded_entry.name == sample_entry.name
     assert loaded_entry.cwd == sample_entry.cwd
 
+
+
+def test_agent_control_characters_are_stripped(temp_dir):
+    entry = SessionEntry(
+        session_id="ok-id", name="n", cwd=str(temp_dir), agent=" Claude\r\ncalc.exe\x7f "
+    )
+    assert entry.agent == "claudecalc.exe"
+
+
+def test_agent_of_only_control_characters_defaults_to_claude(temp_dir):
+    entry = SessionEntry(session_id="ok-id", name="n", cwd=str(temp_dir), agent="\r\n\x01")
+    assert entry.agent == "claude"
+
+
+def test_name_of_only_control_characters_falls_back_to_directory_name(temp_dir):
+    entry = SessionEntry(session_id="ok-id", name="\r\n\x01", cwd=str(temp_dir))
+    assert entry.name == f"{temp_dir.name}-ok-id"

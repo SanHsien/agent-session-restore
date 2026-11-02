@@ -1,5 +1,6 @@
 """Tests for the per-shell quoting helpers."""
 
+import _psparse
 import pytest
 from _cmdsim import parse_passes, win_argv
 
@@ -57,7 +58,9 @@ def test_quote_cmd_token_neutralizes_percent_expansion_marker():
 
 def test_format_argv_powershell_quotes_every_token():
     result = format_argv_powershell(["codex", "resume", "abc-123"])
-    assert result == "'codex' 'resume' 'abc-123'"
+    # The leading call operator keeps the first quoted token from being a bare
+    # string expression (which is a parse error followed by more tokens).
+    assert result == "& 'codex' 'resume' 'abc-123'"
 
 
 def test_format_argv_cmd_only_escapes_tokens_that_need_it():
@@ -166,3 +169,20 @@ def test_quote_batch_text_escapes_metacharacters_and_percent():
     delivered, live = parse_passes(text, 1)
     assert live == []
     assert delivered == 'x" & calc | 100%%'
+
+
+@pytest.mark.parametrize("quote", ["\u2018", "\u2019", "\u201a", "\u201b"])
+def test_quote_powershell_doubles_unicode_single_quotes(quote):
+    # PowerShell treats these four as single quotes too; an undoubled one
+    # would end the literal early.
+    assert quote_powershell(f"x{quote}y") == f"'x{quote}{quote}y'"
+
+
+@pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
+@pytest.mark.parametrize("quote", _psparse.SINGLE_QUOTES)
+def test_quote_powershell_payload_with_any_single_quote_parses_as_one_command(quote):
+    payload = f"x{quote}; calc.exe; {quote}y"
+
+    names = _psparse.command_names("Write-Host " + quote_powershell(payload))
+
+    assert names == ["Write-Host"]

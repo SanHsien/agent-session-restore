@@ -105,9 +105,11 @@ class SessionEntry:
         _validate_session_id(self.session_id)
 
         # Normalize agent type
-        if self.agent:
-            self.agent = self.agent.strip().lower()
-        else:
+        # The agent tag is embedded in window titles and script comments, so
+        # control characters (CR/LF would start a new script line) are removed
+        # like they are from name.
+        self.agent = _strip_control_chars((self.agent or "").strip()).strip().lower()
+        if not self.agent:
             self.agent = AgentType.CLAUDE.value
 
         # Normalize working directory path
@@ -117,12 +119,11 @@ class SessionEntry:
             self.cwd = os.path.normpath(self.cwd)
         _validate_cwd_chars(self.cwd)
 
-        # Fallback name if empty
-        if not self.name or not self.name.strip():
+        # Fallback name if empty (also when nothing is left after stripping)
+        self.name = _strip_control_chars((self.name or "").strip()).strip()
+        if not self.name:
             dir_name = Path(self.cwd).name or "workspace"
             self.name = f"{dir_name}-{self.session_id[:8]}"
-        else:
-            self.name = _strip_control_chars(self.name.strip())
 
     @property
     def is_active(self) -> bool:

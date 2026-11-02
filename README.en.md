@@ -161,7 +161,7 @@ uv run csr register --id codex-task-42 --agent codex --cwd C:\path\to\project --
 uv run csr register --id cursor-session-1 --agent cursor --cwd C:\path\to\project
 ```
 
-`custom_resume_cmd` with the cmd backend: the template is written verbatim into the temp script's parenthesized block, so it must be a valid batch line. An unquoted `)` breaks the block and leaves the temp file behind, and a literal `%` must be written `%%` under batch rules. This is a behaviour change from the old inline `/k` string; the `{id}`/`{cwd}`/`{name}` substitutions are still quoted automatically.
+`custom_resume_cmd` with the cmd backend (both the Python CLI and `scripts/Restore-AgentSessions.ps1 -Terminal cmd`): the template is written verbatim into the temp script's parenthesized block, so it must be a valid batch line. An unquoted `)` breaks the block and leaves the temp file behind, and a literal `%` must be written `%%` under batch rules. This is a behaviour change from the old inline `/k` string; the `{id}`/`{cwd}`/`{name}` substitutions are still quoted automatically.
 
 ---
 

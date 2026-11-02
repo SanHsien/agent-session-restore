@@ -5,14 +5,13 @@
 
 ## 現況
 
-public、非 fork 的 Windows 優先多 Agent 會話登記與恢復工具（`csr`）：Claude Code 以 hook 自動登記，Codex、Cursor、Antigravity、Hermes 手動登記。健康：2026-10-29 查到 open issue 0、open PR 0、Dependabot 與 Code scanning 告警各 0，`CI`、`CodeQL`、`Dependency freshness` 在 `main` 最近一次皆 success（2026-10-29 `gh` 查詢）；沒有 release。10-26 的深度掃描修復已全部在 `main`，剩下的是需要實機 Windows Terminal／cmd 才能驗證的邊角與兩個維護者取捨。
+public、非 fork 的 Windows 優先多 Agent 會話登記與恢復工具（`csr`）：Claude Code 以 hook 自動登記，Codex、Cursor、Antigravity、Hermes 手動登記。健康：2026-10-29 查到 open issue 0、open PR 0、Dependabot 與 Code scanning 告警各 0，`CI`、`CodeQL`、`Dependency freshness` 在 `main` 最近一次皆 success（2026-10-29 `gh` 查詢）；沒有 release。10-26 的深度掃描修復已全部在 `main`，PowerShell 腳本的 cmd 模式也已改用暫存批次檔；剩下的是需要實機 Windows Terminal／互動 cmd 視窗才能驗證的邊角，以及中期條件項目。
 
 ## 近期：可以直接動手
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
 | 在實機驗證 Windows Terminal 後端對名稱或路徑含 `;` 的處理，必要時改為 `\;` 跳脫 | wt 以 `;` 分隔子命令，名稱或目錄含 `;` 可能被拆成兩個命令；單元測試無法在不開視窗的前提下驗證 | 維護者在實機建立名稱含 `;` 的 session，`csr restore` 後 wt 只開一個分頁且標題與目錄正確；修法附一個斷言命令字串的測試；`uv run pytest -q -W error`、`uv run ruff check .`、`uv run mypy src` 綠 | 維護者 | 深度掃描報告（2026-10-26）「刻意不修」（wt 與 `;`）；`src/agent_session_restore/launcher.py` |
 | 在實機以真 cmd 視窗驗證 `--terminal cmd` 對 `%`、`!` 的處理 | cmd 後端已改為暫存腳本檔（`quoting.quote_batch_token`，`%` 以 `%%` 表示）；Windows 上的測試以真 `cmd.exe /c`（不開視窗）驗證過程式收到原值，但 `start` 開出的互動視窗與 `chcp 65001` 對視窗的影響未實機看過 | 維護者以含 `%PATH%`、`!`、`&` 的名稱與目錄各跑一次 `--terminal cmd`，程式收到的是原值單一參數；結果寫進 `REVIEW.md` | 維護者 | `tests/_cmdsim.py`；`REVIEW.md` 62–68 行（cmd 後端殘留限制） |
-| 把 `scripts/Restore-AgentSessions.ps1` 的 cmd 模式也改為暫存腳本檔 | Python launcher 的 cmd 後端已不再把使用者值放進 `/k` 字串，腳本的 cmd 模式仍內嵌（`ConvertTo-CmdSafe` + `/k`），兩邊安全性不一致 | 腳本 cmd 模式不再把 id／cwd／name 放進 `/k` 字串；暫存檔用後清除；`tests/test_restore_script.py` 增加對應斷言；`uv run pytest -q -W error`、`uv run ruff check .`、`uv run mypy src` 綠 | Claude Opus | `scripts/Restore-AgentSessions.ps1` cmd 區段；`REVIEW.md` 2026-10-30 RESOLVED 註記 |
 
 ## 中期：等條件成立再做
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |

@@ -52,30 +52,55 @@ $ErrorActionPreference = 'Stop'
 function ConvertTo-PSLiteral {
     # Wrap a value in a single-quoted PowerShell literal. Inside a
     # single-quoted string, PowerShell treats every character literally
-    # except the quote character itself, which is escaped by doubling it.
+    # except the single-quote characters, each escaped by doubling it. That is
+    # not only the ASCII apostrophe: the tokenizer also accepts U+2018, U+2019,
+    # U+201A and U+201B (regex escapes below keep this file ASCII).
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
-    return "'" + $Value.Replace("'", "''") + "'"
+    return "'" + ($Value -replace "['\u2018\u2019\u201A\u201B]", '$0$0') + "'"
 }
 
-function ConvertTo-CmdSafe {
-    # Escape a value for safe embedding in a cmd.exe command-line string.
-    # cmd.exe re-parses its entire command line (including text following
-    # /c) with its own metacharacter rules, so each metacharacter is
-    # caret-escaped rather than relying on argv-boundary quoting alone.
+function ConvertTo-BatchToken {
+    # Match quoting.quote_batch_token: one batch parse, percent signs doubled.
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
-    $metaChars = '^&|<>()@!%"'
+    if ($Value -eq '') { return '""' }
+    if ($Value -match '^[\w.:/-]+\z') { return $Value }
+    $sb = New-Object System.Text.StringBuilder
+    $backslashes = 0
+    $inQuote = $false
+    foreach ($ch in $Value.ToCharArray()) {
+        if ($ch -eq [char]34 -or $ch -eq '!') {
+            if ($inQuote) {
+                [void]$sb.Append([string]::new([char]92, $backslashes)).Append('"')
+                $inQuote = $false
+            }
+            if ($ch -eq [char]34) { [void]$sb.Append('\^"') }
+            else { [void]$sb.Append('^!') }
+        } else {
+            if (-not $inQuote) {
+                [void]$sb.Append('"')
+                $inQuote = $true
+            }
+            if ($ch -eq '%') { [void]$sb.Append('%%') }
+            else { [void]$sb.Append($ch) }
+        }
+        if ($ch -eq [char]92) { $backslashes++ } else { $backslashes = 0 }
+    }
+    if ($inQuote) { [void]$sb.Append([string]::new([char]92, $backslashes)).Append('"') }
+    return $sb.ToString()
+}
+
+function ConvertTo-BatchText {
+    # Bare text for title, matching quoting.quote_batch_text.
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
     $sb = New-Object System.Text.StringBuilder
     foreach ($ch in $Value.ToCharArray()) {
-        if ($metaChars.IndexOf([string]$ch) -ge 0) {
-            [void]$sb.Append('^')
+        if ($ch -eq '%') { [void]$sb.Append('%%') }
+        else {
+            if ('^&|<>()@!"'.IndexOf([string]$ch) -ge 0) { [void]$sb.Append('^') }
+            [void]$sb.Append($ch)
         }
-        [void]$sb.Append($ch)
     }
-    $result = $sb.ToString()
-    if ($result -eq '' -or $result -match '\s') {
-        $result = '"' + $result + '"'
-    }
-    return $result
+    return $sb.ToString()
 }
 
 function ConvertTo-WinArg {
@@ -139,7 +164,18 @@ function Get-AgentResumeCommand {
 # one to contain whitespace or shell metacharacters, so unlike name/cwd
 # (which are only ever quoted, never rejected) a session whose id fails
 # this pattern is skipped entirely rather than risking a quoting mistake.
-$SafeIdPattern = '^[A-Za-z0-9_.:-]{1,128}$'
+$SafeIdPattern = '^[A-Za-z0-9_.:-]{1,128}\z'
+
+# CR, LF and the other ASCII control characters (and DEL) end or corrupt a
+# line of a batch file or command string, so a value carrying one could start
+# a second command. Same set models.py strips from name and rejects in cwd.
+$ControlCharPattern = '[\x00-\x1F\x7F]'
+
+function Remove-ControlChars {
+    param([AllowNull()][string]$Value)
+    if ($null -eq $Value) { return '' }
+    return $Value -replace $ControlCharPattern, ''
+}
 
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host " Multi-Agent Fleet Session Restorer (Windows 11)" -ForegroundColor Cyan
@@ -199,10 +235,14 @@ $launched = 0
 $failed = 0
 
 foreach ($s in $sessions) {
-    $name = if ($s.name) { $s.name } else { [System.IO.Path]::GetFileName($s.cwd) }
     $id = $s.session_id
     $cwd = $s.cwd
-    $agentType = if ($s.agent) { $s.agent.ToLower() } else { "claude" }
+    # Sanitise the free-text fields the same way models.py does. The agent
+    # tag lands in the window title and must not carry control characters.
+    $name = (Remove-ControlChars ([string]$s.name).Trim()).Trim()
+    if (-not $name) { $name = (Remove-ControlChars ([System.IO.Path]::GetFileName([string]$cwd))).Trim() }
+    $agentType = Remove-ControlChars ([string]$s.agent).Trim().ToLower()
+    if (-not $agentType) { $agentType = "claude" }
     $agentTag = $agentType.ToUpper()
     $displayTitle = "[$agentTag] $name"
 
@@ -214,6 +254,12 @@ foreach ($s in $sessions) {
 
     if ($id -notmatch $SafeIdPattern) {
         Write-Warning "  Skipping session with unsafe id: $id"
+        $failed++
+        continue
+    }
+
+    if ([string]$cwd -match $ControlCharPattern) {
+        Write-Warning "  Directory contains control characters (Skipping)"
         $failed++
         continue
     }
@@ -231,7 +277,7 @@ foreach ($s in $sessions) {
     $agentCmdPs = Get-AgentResumeCommand -AgentType $agentType -Id $id -Cwd $cwd -Name $name `
         -CustomResumeCmd $s.custom_resume_cmd -Quote ${function:ConvertTo-PSLiteral}
     $agentCmdCmd = Get-AgentResumeCommand -AgentType $agentType -Id $id -Cwd $cwd -Name $name `
-        -CustomResumeCmd $s.custom_resume_cmd -Quote ${function:ConvertTo-CmdSafe}
+        -CustomResumeCmd $s.custom_resume_cmd -Quote ${function:ConvertTo-BatchToken}
 
     if ($DryRun) {
         $plainCmd = Get-AgentResumeCommand -AgentType $agentType -Id $id -Cwd $cwd -Name $name `
@@ -241,6 +287,7 @@ foreach ($s in $sessions) {
         continue
     }
 
+    $cmdScriptPath = $null
     try {
         if ($Terminal -eq 'wt') {
             # Windows Terminal new tab. -d/--title are separate argv elements
@@ -255,11 +302,29 @@ foreach ($s in $sessions) {
             $psArgs = @("-NoExit", "-Command", $titleAssignment) | ForEach-Object { ConvertTo-WinArg $_ }
             Start-Process $shellCmd -WorkingDirectory $cwd -ArgumentList ($psArgs -join ' ')
         } elseif ($Terminal -eq 'cmd') {
-            # Standalone Command Prompt. cmd.exe re-parses everything after
-            # /k with its own metacharacter rules, so title and the resume
-            # command both use the cmd-specific escaping helper here.
-            $cmdLine = "title " + (ConvertTo-CmdSafe $displayTitle) + " && " + $agentCmdCmd
-            Start-Process cmd.exe -WorkingDirectory $cwd -ArgumentList "/k", $cmdLine
+            # Keep all session data in a UTF-8 batch file, never in /k text.
+            # cmd reads the whole block before the first command deletes it.
+            $lines = @(
+                '@echo off'
+                'chcp 65001 >nul'
+                '('
+                'del "%~f0" >nul 2>&1'
+                ('title ' + (ConvertTo-BatchText $displayTitle))
+                ('cd /d ' + (ConvertTo-BatchToken $cwd))
+                $agentCmdCmd
+                '(goto) 2>nul'
+                ')'
+            )
+            $candidate = Join-Path ([System.IO.Path]::GetTempPath()) ("asr-" + [guid]::NewGuid().ToString('N') + '.cmd')
+            $stream = [System.IO.File]::Open($candidate, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+            $cmdScriptPath = $candidate
+            try {
+                $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes(($lines -join "`r`n") + "`r`n")
+                $stream.Write($bytes, 0, $bytes.Length)
+            } finally {
+                $stream.Dispose()
+            }
+            Start-Process cmd.exe -WorkingDirectory $cwd -ArgumentList ('/k call "' + $cmdScriptPath + '"')
         }
 
         $launched++
@@ -267,6 +332,9 @@ foreach ($s in $sessions) {
             Start-Sleep -Milliseconds $DelayMs
         }
     } catch {
+        if ($cmdScriptPath) {
+            Remove-Item -LiteralPath $cmdScriptPath -Force -ErrorAction SilentlyContinue
+        }
         Write-Error "  Failed to launch session: $_"
         $failed++
     }

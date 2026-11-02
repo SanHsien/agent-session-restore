@@ -323,16 +323,27 @@ class SessionLauncher:
             lines.append(f"# [{agent_tag}] Session: {s.name} ({s.session_id})")
             lines.append(f"if (Test-Path -LiteralPath {cwd_q}) {{")
 
+            # Start-Process takes ONE ready-made command-line string and hands
+            # it to the program unchanged on every PowerShell version. Calling
+            # wt.exe directly, or passing an argument array, is not safe:
+            # Windows PowerShell 5.1 (and PowerShell 7.2 and earlier) does not
+            # escape double quotes inside native-command arguments, and an
+            # array is joined with bare spaces, so a name containing `"` or a
+            # space could become extra arguments.
             if use_wt:
-                lines.append(
-                    f"    wt.exe -w 0 new-tab -d {cwd_q} --title {title_q} "
-                    f"{pwsh_cmd} -NoExit -Command {quote_powershell(agent_cmd_ps)}"
+                wt_args = subprocess.list2cmdline(
+                    [
+                        "-w", "0", "new-tab", "-d", s.cwd, "--title", display_title,
+                        pwsh_cmd, "-NoExit", "-Command", agent_cmd_ps,
+                    ]
                 )
+                lines.append(f"    Start-Process wt.exe -ArgumentList {quote_powershell(wt_args)}")
             else:
                 inner_script = f"$host.UI.RawUI.WindowTitle = {title_q}; {agent_cmd_ps}"
+                pwsh_args = subprocess.list2cmdline(["-NoExit", "-Command", inner_script])
                 lines.append(
                     f"    Start-Process {pwsh_cmd} -WorkingDirectory {cwd_q} "
-                    f"-ArgumentList '-NoExit', '-Command', {quote_powershell(inner_script)}"
+                    f"-ArgumentList {quote_powershell(pwsh_args)}"
                 )
 
             lines.append("    Start-Sleep -Milliseconds 300")

@@ -2,17 +2,20 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import _psparse
 import pytest
 from _cmdsim import parse_passes, win_argv
 
 from agent_session_restore.launcher import CMD_SCRIPT_PLACEHOLDER, SessionLauncher
 from agent_session_restore.models import SessionEntry
+from agent_session_restore.quoting import quote_powershell
 
 
 def test_build_resume_command_wt(sample_entry):
@@ -22,7 +25,7 @@ def test_build_resume_command_wt(sample_entry):
     assert "new-tab" in cmd
     assert "-d" in cmd
     assert sample_entry.cwd in cmd
-    assert f"'claude' '-r' '{sample_entry.session_id}'" in cmd[-1]
+    assert f"& 'claude' '-r' '{sample_entry.session_id}'" in cmd[-1]
 
 
 def test_build_resume_command_pwsh(sample_entry):
@@ -30,7 +33,7 @@ def test_build_resume_command_pwsh(sample_entry):
     cmd = launcher.build_resume_command(sample_entry)
     assert "pwsh" in cmd[0] or "powershell" in cmd[0]
     assert "-NoExit" in cmd
-    assert f"'claude' '-r' '{sample_entry.session_id}'" in cmd[-1]
+    assert f"& 'claude' '-r' '{sample_entry.session_id}'" in cmd[-1]
 
 
 def test_build_resume_command_cmd(sample_entry):
@@ -420,3 +423,148 @@ def test_cmd_backend_starts_when_temp_path_has_space_and_cmd_metacharacters(temp
 
     assert "OK" in run.stdout.decode("utf-8", "replace")
     assert was_deleted
+
+
+def _assert_no_injected_line(text: str, injected: str) -> None:
+    # Any CR/LF that survived would put the injected word at the start of a line.
+    assert not any(line.strip().lower().startswith(injected) for line in text.splitlines()), text
+
+
+def test_agent_with_embedded_newline_cannot_start_a_cmd_script_line(temp_dir):
+    entry = SessionEntry(
+        session_id="ok-id", name="n", cwd=str(temp_dir), agent="claude\r\ncalc.exe"
+    )
+    _assert_no_injected_line(SessionLauncher.build_cmd_script(entry), "calc.exe")
+
+
+def test_agent_with_embedded_newline_cannot_start_a_powershell_script_line(temp_dir):
+    entry = SessionEntry(
+        session_id="ok-id", name="n", cwd=str(temp_dir), agent="claude\r\ncalc.exe"
+    )
+    script = SessionLauncher().generate_powershell_script([entry])
+    _assert_no_injected_line(script, "calc.exe")
+
+
+@pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
+@pytest.mark.parametrize("quote", _psparse.SINGLE_QUOTES)
+@pytest.mark.parametrize("backend", ["pwsh", "wt"])
+def test_powershell_backends_keep_unicode_quote_payloads_inside_string_literals(
+    temp_dir, backend, quote
+):
+    payload = f"x{quote}; calc.exe; {quote}y"
+    project = temp_dir / payload
+    entry = SessionEntry(
+        session_id="ok-id", name=payload, cwd=str(project), agent="custom",
+        custom_resume_cmd="tool {name} {cwd} {id}",
+    )
+
+    command = SessionLauncher(backend=backend).build_resume_command(entry)
+
+    assert "calc.exe" not in _psparse.command_names(command[-1])
+    assert _psparse.command_names(command[-1]).count("tool") == 1
+
+
+@pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
+@pytest.mark.parametrize("quote", _psparse.SINGLE_QUOTES)
+def test_generated_powershell_script_keeps_unicode_quote_payloads_inside_string_literals(
+    temp_dir, quote
+):
+    payload = f"x{quote}; calc.exe; {quote}y"
+    entry = SessionEntry(
+        session_id="ok-id", name=payload, cwd=str(temp_dir / payload), agent="custom",
+        custom_resume_cmd="tool {name} {cwd}",
+    )
+
+    script = SessionLauncher().generate_powershell_script([entry])
+
+    assert "calc.exe" not in _psparse.command_names(script)
+
+
+@pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
+@pytest.mark.parametrize("agent", ["claude", "codex", "cursor", "antigravity", "hermes"])
+@pytest.mark.parametrize("backend", ["pwsh", "wt"])
+def test_builtin_agent_resume_command_is_valid_powershell(temp_dir, backend, agent):
+    # A bare string literal followed by more strings is a parse error; the
+    # program name needs the call operator.
+    entry = SessionEntry(session_id="ok-id", name="n", cwd=str(temp_dir), agent=agent)
+    launcher = SessionLauncher(backend=backend)
+    program = launcher.build_agent_argv(entry)[0]
+
+    commands, errors = _psparse.parse(launcher.build_resume_command(entry)[-1])
+
+    assert errors == []
+    assert commands[-1] == program
+
+
+@pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
+def test_generated_powershell_script_is_valid_powershell(temp_dir):
+    entry = SessionEntry(session_id="ok-id", name="n", cwd=str(temp_dir), agent="codex")
+
+    commands, errors = _psparse.parse(SessionLauncher().generate_powershell_script([entry]))
+
+    assert errors == []
+    assert "codex" not in commands  # only inside the quoted -Command text
+
+
+_SPY = r"""
+$global:calls = @()
+function Start-Process {
+    [CmdletBinding()]
+    param([Parameter(Position = 0)]$FilePath, [object]$ArgumentList, $WorkingDirectory)
+    $text = if ($ArgumentList -is [array]) { $ArgumentList -join ' ' } else { [string]$ArgumentList }
+    $global:calls += [pscustomobject]@{ FilePath = [string]$FilePath; ArgText = $text }
+}
+function Start-Sleep { }
+Invoke-Expression ([System.IO.File]::ReadAllText('{script}'))
+[System.IO.File]::WriteAllText('{out}', (ConvertTo-Json -InputObject @($global:calls) -Compress))
+"""
+
+_HOSTILE_NAMES = [
+    'a" pwsh -Command calc.exe "',
+    "it's a \"quote\" with spaces; and a trailing backslash" + chr(92),
+]
+
+
+@pytest.mark.parametrize("shell", ["powershell", "pwsh"])
+@pytest.mark.parametrize("use_wt", [True, False])
+@pytest.mark.parametrize("name", _HOSTILE_NAMES, ids=["quote-injection", "mixed-specials"])
+def test_generated_script_hands_one_command_line_string_to_the_terminal(
+    tmp_path, shell, use_wt, name
+):
+    # Windows PowerShell 5.1 (and 7.2 and earlier) does not escape double quotes when
+    # it passes arguments to a native program, so the script must give
+    # Start-Process one ready-made command line instead of calling wt.exe.
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} not available")
+    entry = SessionEntry(session_id="ok-id", name=name, cwd=str(tmp_path), agent="claude")
+    launcher = SessionLauncher()
+    with patch.object(SessionLauncher, "is_windows_terminal_available", return_value=use_wt):
+        text = launcher.generate_powershell_script([entry])
+    script = tmp_path / "gen.ps1"
+    script.write_text(text, encoding="utf-8-sig")
+    out = tmp_path / "calls.json"
+    code = _SPY.replace("{script}", str(script)).replace("{out}", str(out))
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+    proc = subprocess.run(
+        [shell, "-NoProfile", "-NonInteractive", "-Command", code],
+        capture_output=True, text=True, timeout=120, creationflags=flags,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    calls = json.loads(out.read_text("utf-8-sig"))
+
+    assert len(calls) == 1, calls
+    argv = win_argv(calls[0]["ArgText"])
+    title = f"CLAUDE: {name}"
+    command = "& 'claude' '-r' 'ok-id'"
+    shell_bin = "pwsh" if shutil.which("pwsh") else "powershell"
+    if use_wt:
+        assert calls[0]["FilePath"] == "wt.exe"
+        assert argv == [
+            "-w", "0", "new-tab", "-d", entry.cwd, "--title", title,
+            shell_bin, "-NoExit", "-Command", command,
+        ]
+    else:
+        assert argv == [
+            "-NoExit", "-Command",
+            f"$host.UI.RawUI.WindowTitle = {quote_powershell(title)}; {command}",
+        ]

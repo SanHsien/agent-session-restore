@@ -126,7 +126,7 @@ subprocess.Popen(argv, shell=False)  # 一律不經過額外 shell 轉譯
 
 cmd 後端的暫存腳本結構：整個主體包在一個括號區塊裡（cmd 先整塊讀入才執行），第一個動作是刪除腳本自身，因此不留檔；結尾的 `(goto) 2>nul` 讓批次安靜結束，`/k` 的互動提示字元保留。檔案以 UTF-8 寫入並由 `chcp 65001` 開頭，非 ASCII 的名稱與路徑可保留。`--dry-run` 只顯示 `<generated-temp-script>.cmd` 佔位符，不寫檔。
 
-`scripts/Restore-AgentSessions.ps1` 是同一套邏輯的 PowerShell 版本（不需要 Python/uv 環境即可執行），內含對應的 `ConvertTo-PSLiteral` 與 `ConvertTo-CmdSafe` 兩個函式，行為對齊 `quoting.py` 的 `quote_powershell()`／`quote_cmd_token()`。其 cmd 模式仍是內嵌 `/k` 字串，尚未改為暫存腳本。
+`scripts/Restore-AgentSessions.ps1` 是同一套邏輯的 PowerShell 版本（不需要 Python/uv 環境即可執行），內含 `ConvertTo-PSLiteral`、`ConvertTo-BatchToken` 與 `ConvertTo-BatchText`，分別對齊 `quoting.py` 的 `quote_powershell()`、`quote_batch_token()` 與 `quote_batch_text()`。cmd 模式以 CreateNew 排他建立唯一的 `asr-*.cmd`，寫入 UTF-8（無 BOM）、CRLF 的相同批次結構，再以 `Start-Process cmd.exe -ArgumentList '/k call "<腳本路徑>"'` 啟動；id／cwd／name／自訂樣板皆只放在檔案內。腳本開始時自刪，寫入或啟動失敗時由 PowerShell 清除；`-DryRun` 不建立暫存檔。
 
 ## 6. 輸入驗證與命令組裝安全性
 

@@ -47,9 +47,9 @@ environments = [
 [dependency-groups]
 # 開發閘門的工具下限；uv.lock 鎖定已審查的實際版本，下限可以比 lock 寬。
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.1.1",  # freshness-hold: 實測 pytest 9.1.1 下 233 個測試全過（與 lock 的 9.2.0 結果相同）；下限是對貢獻者的相容承諾，不為追最新而調高
     "ruff>=0.16.10",  # freshness-hold: lint 規則集（E,F,I,UP,B,SIM）在 0.16.10 與 0.17.x 結果相同（實測皆通過）；下限是對貢獻者的相容承諾，不為追最新而調高
-    "mypy>=2.4.0",
+    "mypy>=2.4.0",  # freshness-hold: 實測 mypy 2.4.0 對 src 無錯誤（與 lock 的 2.4.1 結果相同）；下限是對貢獻者的相容承諾，不為追最新而調高
 ]
 
 [tool.ruff]

@@ -37,7 +37,7 @@ provides-extras = ["rich"]
 dev = [
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.17.2" },
+    { name = "ruff", specifier = ">=0.16.10" },
 ]
 
 [[package]]

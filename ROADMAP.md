@@ -10,7 +10,6 @@ public、非 fork 的 Windows 優先多 Agent 會話登記與恢復工具（`csr
 ## 近期：可以直接動手
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 在實機驗證 Windows Terminal 後端對名稱或路徑含 `;` 的處理，必要時改為 `\;` 跳脫 | wt 以 `;` 分隔子命令，名稱或目錄含 `;` 可能被拆成兩個命令；單元測試無法在不開視窗的前提下驗證 | 在實機建立名稱含 `;` 的 session，`csr restore` 後 wt 只開一個分頁且標題與目錄正確；修法附一個斷言命令字串的測試；`uv run pytest -q -W error`、`uv run ruff check .`、`uv run mypy src` 綠 | Claude（agent-desktop） | 深度掃描報告（2026-10-26）「刻意不修」（wt 與 `;`）；`src/agent_session_restore/launcher.py` |
 | 在實機以真 cmd 視窗驗證 `--terminal cmd` 對 `%`、`!` 的處理 | cmd 後端已改為暫存腳本檔（`quoting.quote_batch_token`，`%` 以 `%%` 表示）；Windows 上的測試以真 `cmd.exe /c`（不開視窗）驗證過程式收到原值，但 `start` 開出的互動視窗與 `chcp 65001` 對視窗的影響未實機看過 | 以含 `%PATH%`、`!`、`&` 的名稱與目錄各跑一次 `--terminal cmd`，程式收到的是原值單一參數；結果寫進 `REVIEW.md` | Claude（agent-desktop） | `tests/_cmdsim.py`；`REVIEW.md` 62–68 行（cmd 後端殘留限制） |
 
 ## 中期：等條件成立再做

@@ -20,11 +20,29 @@ from pathlib import Path
 
 import _psparse
 import pytest
+from _cmdsim import win_argv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "Restore-AgentSessions.ps1"
 
 pytestmark = pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell 7 not available")
+
+
+@pytest.mark.parametrize("name", [";one;;two;", r"back\;slash 中文"])
+def test_wt_semicolons_are_escaped_in_every_argument(tmp_path, name):
+    project = tmp_path / "; project;"
+    project.mkdir()
+    (call,) = _run(
+        tmp_path, "wt", name, project,
+        custom="Write-Output {cwd}; Write-Output {name}",
+    )
+    argv = win_argv(call["ArgText"])
+    assert argv[argv.index("-d") + 1] == str(project).replace(";", r"\;")
+    assert argv[argv.index("--title") + 1] == f"[CLAUDE] {name}".replace(";", r"\;")
+    expected = f"Write-Output '{project}'; Write-Output '{name}'"
+    assert argv[-1] == expected.replace(";", r"\;")
+    assert argv[-1].replace(r"\;", ";") == expected
+
 
 RECORDER = r"""
 $global:calls = @()

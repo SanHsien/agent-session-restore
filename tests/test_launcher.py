@@ -28,6 +28,25 @@ def test_build_resume_command_wt(sample_entry):
     assert f"& 'claude' '-r' '{sample_entry.session_id}'" in cmd[-1]
 
 
+@pytest.mark.parametrize("name", [";", "one;;two;", "space ; 中文", r"back\;slash"])
+@pytest.mark.parametrize("custom", [None, "Write-Output {cwd}; Write-Output {name}"])
+def test_wt_semicolons_survive_terminal_parsing(tmp_path, name, custom):
+    entry = SessionEntry(
+        session_id="s-1", name=name, cwd=str(tmp_path / "; project;"),
+        agent="cursor", custom_resume_cmd=custom,
+    )
+    command = SessionLauncher(backend="wt").build_resume_command(entry)
+    expected_script = (
+        f"Write-Output {quote_powershell(entry.cwd)}; Write-Output {quote_powershell(name)}"
+        if custom else f"& 'cursor' {quote_powershell(entry.cwd)}"
+    )
+    assert command[command.index("-d") + 1] == entry.cwd.replace(";", r"\;")
+    assert command[command.index("--title") + 1] == f"CURSOR: {name}".replace(";", r"\;")
+    assert command[-1] == expected_script.replace(";", r"\;")
+    # WT removes one backslash per escaped delimiter, including existing \; text.
+    assert command[-1].replace(r"\;", ";") == expected_script
+
+
 def test_build_resume_command_pwsh(sample_entry):
     launcher = SessionLauncher(backend="pwsh")
     cmd = launcher.build_resume_command(sample_entry)
@@ -459,9 +478,11 @@ def test_powershell_backends_keep_unicode_quote_payloads_inside_string_literals(
     )
 
     command = SessionLauncher(backend=backend).build_resume_command(entry)
+    # Parse the text pwsh actually receives: wt removes one backslash from each \;.
+    ps_text = command[-1].replace(r"\;", ";") if backend == "wt" else command[-1]
 
-    assert "calc.exe" not in _psparse.command_names(command[-1])
-    assert _psparse.command_names(command[-1]).count("tool") == 1
+    assert "calc.exe" not in _psparse.command_names(ps_text)
+    assert _psparse.command_names(ps_text).count("tool") == 1
 
 
 @pytest.mark.skipif(not _psparse.have_pwsh(), reason="PowerShell 7 not available")
@@ -536,7 +557,8 @@ def test_generated_script_hands_one_command_line_string_to_the_terminal(
     # Start-Process one ready-made command line instead of calling wt.exe.
     if shutil.which(shell) is None:
         pytest.skip(f"{shell} not available")
-    entry = SessionEntry(session_id="ok-id", name=name, cwd=str(tmp_path), agent="claude")
+    entry = SessionEntry(session_id="ok-id", name=name, cwd=str(tmp_path / ";project;"), agent="claude")
+    Path(entry.cwd).mkdir()
     launcher = SessionLauncher()
     with patch.object(SessionLauncher, "is_windows_terminal_available", return_value=use_wt):
         text = launcher.generate_powershell_script([entry])
@@ -559,10 +581,11 @@ def test_generated_script_hands_one_command_line_string_to_the_terminal(
     shell_bin = "pwsh" if shutil.which("pwsh") else "powershell"
     if use_wt:
         assert calls[0]["FilePath"] == "wt.exe"
-        assert argv == [
+        expected = [
             "-w", "0", "new-tab", "-d", entry.cwd, "--title", title,
             shell_bin, "-NoExit", "-Command", command,
         ]
+        assert argv == [arg.replace(";", r"\;") for arg in expected]
     else:
         assert argv == [
             "-NoExit", "-Command",

@@ -290,11 +290,11 @@ foreach ($s in $sessions) {
     $cmdScriptPath = $null
     try {
         if ($Terminal -eq 'wt') {
-            # Windows Terminal new tab. -d/--title are separate argv elements
-            # to wt.exe itself (no shell re-parsing); $agentCmdPs is the text
-            # the started pwsh -Command will run, already PS-literal quoted.
+            # WT splits even quoted semicolons and removes one backslash
+            # from each \;. Apply this before Windows argv quoting, also
+            # to the inner PowerShell command and existing literal \; text.
             $wtArgs = @("-w", "0", "new-tab", "-d", $cwd, "--title", $displayTitle, $shellCmd, "-NoExit", "-Command", $agentCmdPs) |
-                ForEach-Object { ConvertTo-WinArg $_ }
+                ForEach-Object { ConvertTo-WinArg ($_.Replace(';', '\;')) }
             Start-Process wt.exe -ArgumentList ($wtArgs -join ' ')
         } elseif ($Terminal -eq 'pwsh' -or $Terminal -eq 'powershell') {
             # Standalone PowerShell window.

@@ -123,7 +123,8 @@ class SessionLauncher:
         temp .cmd script of the cmd backend) after being quoted with the matching per-shell helper from
         agent_session_restore.quoting. Everywhere else they are passed as
         discrete argv elements, which the OS process-creation API keeps
-        separate from shell re-parsing. The cmd backend takes ``script_path``
+        separate from shell re-parsing. WT also needs semicolons escaped for
+        its own subcommand parser. The cmd backend takes ``script_path``
         (see write_cmd_script); without it the command shows a placeholder.
         """
         cwd = session.cwd
@@ -141,7 +142,10 @@ class SessionLauncher:
                 agent_cmd_ps = _substitute_custom_cmd(
                     session.custom_resume_cmd or "", session, quote_powershell
                 )
-            return [
+            # WT splits on semicolons even inside quoted argv, then removes
+            # one backslash from each \;. Escape every argument, including
+            # the PowerShell command, only at this outer transport boundary.
+            wt_args = [
                 "wt.exe",
                 "-w",
                 "0",
@@ -155,6 +159,7 @@ class SessionLauncher:
                 "-Command",
                 agent_cmd_ps,
             ]
+            return [arg.replace(";", r"\;") for arg in wt_args]
 
         if self.backend in ("pwsh", "powershell"):
             if argv is not None:
@@ -332,10 +337,7 @@ class SessionLauncher:
             # space could become extra arguments.
             if use_wt:
                 wt_args = subprocess.list2cmdline(
-                    [
-                        "-w", "0", "new-tab", "-d", s.cwd, "--title", display_title,
-                        pwsh_cmd, "-NoExit", "-Command", agent_cmd_ps,
-                    ]
+                    SessionLauncher(backend="wt").build_resume_command(s)[1:]
                 )
                 lines.append(f"    Start-Process wt.exe -ArgumentList {quote_powershell(wt_args)}")
             else:

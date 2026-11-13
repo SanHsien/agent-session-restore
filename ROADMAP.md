@@ -10,7 +10,7 @@ public、非 fork 的 Windows 優先多 Agent 會話登記與恢復工具（`csr
 ## 近期：可以直接動手
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 在實機以真 cmd 視窗驗證 `--terminal cmd` 對 `%`、`!` 的處理 | cmd 後端已改為暫存腳本檔（`quoting.quote_batch_token`，`%` 以 `%%` 表示）；Windows 上的測試以真 `cmd.exe /c`（不開視窗）驗證過程式收到原值，但 `start` 開出的互動視窗與 `chcp 65001` 對視窗的影響未實機看過 | 以含 `%PATH%`、`!`、`&` 的名稱與目錄各跑一次 `--terminal cmd`，程式收到的是原值單一參數；結果寫進 `REVIEW.md` | Claude（agent-desktop） | `tests/_cmdsim.py`；`REVIEW.md` 62–68 行（cmd 後端殘留限制） |
+| 無 | 目前沒有可以直接動手的項目 | 無 | 無 | 無 |
 
 ## 中期：等條件成立再做
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |
